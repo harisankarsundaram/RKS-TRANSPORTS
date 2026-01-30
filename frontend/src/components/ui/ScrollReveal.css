@@ -1,0 +1,47 @@
+.scroll-reveal {
+    opacity: 0;
+    transition: opacity 0.6s ease-out, transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: opacity, transform;
+}
+
+/* Fade Up */
+.scroll-reveal.fade-up {
+    transform: translateY(30px);
+}
+
+.scroll-reveal.fade-up.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Fade In (Simple) */
+.scroll-reveal.fade-in {
+    transform: scale(0.95);
+}
+
+.scroll-reveal.fade-in.is-visible {
+    opacity: 1;
+    transform: scale(1);
+}
+
+/* Slide Right */
+.scroll-reveal.slide-right {
+    transform: translateX(-30px);
+}
+
+.scroll-reveal.slide-right.is-visible {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+/* Slide Left */
+.scroll-reveal.slide-left {
+    transform: translateX(30px);
+}
+
+.scroll-reveal.slide-left.is-visible {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+/* Staggered children support can be added if needed via CSS variables or specific child selectors */

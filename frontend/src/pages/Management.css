@@ -1,0 +1,174 @@
+/* Standardized RKS Theme for Management Pages */
+
+:root {
+    --rks-green-dark: #2C5F2D;
+    --rks-green-light: #97BC62;
+    --rks-cream: #F2F5D0;
+}
+
+.management-page {
+    padding: 2.5rem;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.management-container {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 2rem;
+    margin-top: 2rem;
+}
+
+@media (max-width: 900px) {
+    .management-container {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Form Styles - Matching AuthCards */
+.form-section {
+    background: white;
+    padding: 2rem;
+    border-radius: 16px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    height: fit-content;
+    border-top: 4px solid var(--rks-green-dark);
+}
+
+.form-section h2 {
+    color: var(--rks-green-dark);
+    margin-bottom: 1.5rem;
+    font-size: 1.5rem;
+}
+
+.form-group {
+    margin-bottom: 1.25rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: #4a5568;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.form-group input,
+.form-group select {
+    width: 100%;
+    padding: 0.8rem 1rem;
+    border: 2px solid #e2e8f0;
+    border-radius: 10px;
+    font-size: 1rem;
+    background-color: #f8fafc;
+    transition: all 0.2s;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: var(--rks-green-light);
+    background-color: white;
+    box-shadow: 0 0 0 3px rgba(151, 188, 98, 0.1);
+}
+
+.btn-submit {
+    width: 100%;
+    padding: 1rem;
+    background-color: var(--rks-green-dark);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 1rem;
+    transition: transform 0.1s, box-shadow 0.2s;
+    margin-top: 1rem;
+}
+
+.btn-submit:hover {
+    background-color: #1e4520;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(44, 95, 45, 0.2);
+}
+
+/* List/Table Styles */
+.list-section {
+    background: white;
+    padding: 2rem;
+    border-radius: 16px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.list-section h2 {
+    color: #2d3748;
+    margin-bottom: 1.5rem;
+    font-size: 1.5rem;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.data-table th {
+    background-color: #f7fafc;
+    color: #4a5568;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+    letter-spacing: 0.5px;
+    padding: 1rem;
+    border-bottom: 2px solid #e2e8f0;
+    text-align: left;
+}
+
+.data-table td {
+    padding: 1rem;
+    border-bottom: 1px solid #e2e8f0;
+    color: #2d3748;
+    vertical-align: middle;
+}
+
+.data-table tr:last-child td {
+    border-bottom: none;
+}
+
+/* Status Badges */
+.status-badge {
+    padding: 0.35rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    display: inline-block;
+}
+
+.status-badge.available {
+    background-color: #F0FFF4;
+    color: #2C5F2D;
+    border: 1px solid #C6F6D5;
+}
+
+.status-badge.assigned,
+.status-badge.intransit {
+    background-color: #EBF8FF;
+    color: #2B6CB0;
+    border: 1px solid #BEE3F8;
+}
+
+.status-badge.maintenance {
+    background-color: #FFF5F5;
+    color: #C53030;
+    border: 1px solid #FED7D7;
+}
+
+.error {
+    color: #C53030;
+    background: #FFF5F5;
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+}
