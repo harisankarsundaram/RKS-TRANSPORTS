@@ -36,6 +36,21 @@ const DriverModel = {
         return result.rows[0] || null;
     },
 
+    // Get driver by user ID
+    async getByUserId(userId) {
+        if (!userId || isNaN(Number(userId))) {
+            return null;
+        }
+        const result = await pool.query(
+            `SELECT d.*, t.truck_number, t.capacity as truck_capacity
+             FROM drivers d 
+             LEFT JOIN trucks t ON d.assigned_truck_id = t.truck_id 
+             WHERE d.user_id = $1 AND d.deleted_at IS NULL`,
+            [userId]
+        );
+        return result.rows[0] || null;
+    },
+
     // Check if license number exists (for validation)
     async findByLicenseNumber(license_number, excludeId = null) {
         let query = 'SELECT * FROM drivers WHERE license_number = $1 AND deleted_at IS NULL';

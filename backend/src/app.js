@@ -31,6 +31,11 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/trucks', truckRoutes);
 app.use('/api/drivers', driverRoutes);
+app.use('/api/trips', tripRoutes);
+app.use('/api/fuel', fuelRoutes);
+app.use('/api/gps', gpsRoutes);
+app.use('/api/maintenance', maintenanceRoutes);
+app.use('/api/invoices', invoiceRoutes);
 app.use('/api', assignmentRoutes);
 
 // 404 handler

@@ -35,21 +35,24 @@ function DashboardLayout({ role }) {
                             <NavLink to="/drivers" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
                                 <span>Driver Management</span>
                             </NavLink>
-                            <div className="nav-item disabled" style={{ opacity: 0.5, cursor: 'not-allowed' }}>
-                                <span>Fuel Tracking (Soon)</span>
-                            </div>
+                            <NavLink to="/trips" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+                                <span>Trip Management</span>
+                            </NavLink>
+                            <NavLink to="/fuel" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+                                <span>Fuel Tracking</span>
+                            </NavLink>
                         </>
                     ) : (
                         <>
                             <NavLink to="/dashboard/driver" end className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
                                 <span>My Dashboard</span>
                             </NavLink>
-                            <div className="nav-item disabled" style={{ opacity: 0.5 }}>
-                                <span>Fuel Tracking (Soon)</span>
-                            </div>
-                            <div className="nav-item disabled" style={{ opacity: 0.5 }}>
-                                <span>Trip History (Soon)</span>
-                            </div>
+                            <NavLink to="/fuel" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+                                <span>Fuel Tracking</span>
+                            </NavLink>
+                            <NavLink to="/trips/history" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+                                <span>Trip History</span>
+                            </NavLink>
                         </>
                     )}
                 </nav>

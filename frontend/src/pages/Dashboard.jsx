@@ -16,14 +16,14 @@ function Dashboard() {
           <h2>Driver Management</h2>
           <p>Register drivers and assign them to trips.</p>
         </Link>
-        <div className="dashboard-card disabled">
+        <Link to="/trips" className="dashboard-card">
           <h2>Trip Management</h2>
-          <p>Coming Soon</p>
-        </div>
-        <div className="dashboard-card disabled">
-          <h2>Reports</h2>
-          <p>Coming Soon</p>
-        </div>
+          <p>Create new trips, track running lorries, and manage history.</p>
+        </Link>
+        <Link to="/fuel" className="dashboard-card">
+          <h2>Fuel & Reports</h2>
+          <p>Log fuel entries, monitor efficiency, and view performance reports.</p>
+        </Link>
       </div>
     </div>
   )

@@ -228,6 +228,28 @@ const DriverController = {
         } catch (error) {
             next(error);
         }
+    },
+
+    // GET /api/drivers/user/:userId - Get driver profile by user ID
+    async getByUserId(req, res, next) {
+        try {
+            const { userId } = req.params;
+            const driver = await DriverModel.getByUserId(userId);
+
+            if (!driver) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Driver profile not found'
+                });
+            }
+
+            res.json({
+                success: true,
+                data: driver
+            });
+        } catch (error) {
+            next(error);
+        }
     }
 };
 

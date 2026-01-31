@@ -12,6 +12,9 @@ router.post('/', authorizeRoles('admin', 'manager'), DriverController.create);
 // GET /api/drivers - Get all drivers
 router.get('/', DriverController.getAll);
 
+// GET /api/drivers/user/:userId - Get driver profile by user ID
+router.get('/user/:userId', DriverController.getByUserId);
+
 // GET /api/drivers/:id - Get driver by ID
 router.get('/:id', DriverController.getById);
 

@@ -19,8 +19,7 @@ function Home() {
         <ScrollReveal animation="fade-in">
           <div className="container hero-content">
             <h1 className="hero-title">
-              Logistics Managed<br />
-              <span className="hero-highlight">Simply & Efficiently</span>
+              <span className="hero-highlight">RKS Transports Reliable & Punctual</span>
             </h1>
             <p className="hero-tagline">
               Connect your fleet and streamline operations with RKS Transports.

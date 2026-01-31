@@ -10,6 +10,8 @@ import AdminDashboard from './pages/AdminDashboard'
 import DriverDashboard from './pages/DriverDashboard'
 import LorryManagement from './pages/LorryManagement'
 import DriverManagement from './pages/DriverManagement'
+import TripManagement from './pages/TripManagement'
+import FuelTracking from './pages/FuelTracking'
 import './App.css'
 
 function DashboardRedirect() {
@@ -38,6 +40,8 @@ function App() {
           <Route path="dashboard/admin" element={<AdminDashboard />} />
           <Route path="lorries" element={<LorryManagement />} />
           <Route path="drivers" element={<DriverManagement />} />
+          <Route path="trips" element={<TripManagement />} />
+          <Route path="fuel" element={<FuelTracking />} />
         </Route>
       </Route>
 
@@ -45,6 +49,8 @@ function App() {
       <Route element={<ProtectedRoute allowedRoles={['driver']} />}>
         <Route element={<DashboardLayout role="driver" />}>
           <Route path="dashboard/driver" element={<DriverDashboard />} />
+          <Route path="trips/history" element={<TripManagement />} />
+          <Route path="fuel" element={<FuelTracking />} />
         </Route>
       </Route>
 

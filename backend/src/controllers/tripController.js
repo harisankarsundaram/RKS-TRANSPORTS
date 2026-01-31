@@ -16,13 +16,12 @@ const TripController = {
             }
 
             // 2. Validate Truck/Driver Assignment
-            // Ensure this specific driver is actually assigned to this truck
             const assignedDriverId = await TruckModel.getAssignedDriver(truck_id);
             if (parseInt(assignedDriverId) !== parseInt(driver_id)) {
                 return res.status(400).json({ success: false, message: 'This driver is not currently assigned to the selected truck' });
             }
 
-            // 3. Check for Active Trips (Truck cannot be in two trips)
+            // 3. Check for Active Trips
             const activeTrip = await TripModel.getActiveTripByTruck(truck_id);
             if (activeTrip) {
                 return res.status(409).json({ success: false, message: `Truck is already on an active trip (Trip ID: ${activeTrip.trip_id})` });
@@ -76,23 +75,34 @@ const TripController = {
             if (!trip) return res.status(404).json({ success: false, message: 'Trip not found' });
             if (trip.status !== 'Running') return res.status(400).json({ success: false, message: `Cannot end trip with status '${trip.status}'` });
 
-            // End Trip
             await TripModel.end(id);
 
-            // AUTOMATION: Automatically make truck and driver available? 
-            // Implementation Plan rule: "On end: truck.status -> 'Available', driver.status -> 'Available'"
-            // HOWEVER, business rule says "Assignment" stays until unassigned.
-            // Let's keep them 'Updated' but maybe ready for next load.
-            // Actually, per module requirements: "On end: truck.status -> 'Available'" implies Unassign OR just 'Ready'.
-            // Given earlier logic, 'Assigned' is a distinct status from 'Available'.
-            // Let's assume they stay 'Assigned' but the TRIP is done.
-            // Wait, the Requirement said: "On end: truck.status -> 'Available', driver.status -> 'Available'". 
-            // This implies UNASSIGNMENT. Let's strictly follow requirement.
-
             const DriverModel = require('../models/driverModel');
-            await DriverModel.unassignTruck(trip.driver_id); // This sets Truck and Driver status to 'Available'
+            await DriverModel.unassignTruck(trip.driver_id);
 
             res.json({ success: true, message: 'Trip completed. Truck and Driver unassigned and marked Available.' });
+        } catch (error) {
+            next(error);
+        }
+    },
+
+    // POST /api/trips/:id/cancel
+    async cancelTrip(req, res, next) {
+        try {
+            const { id } = req.params;
+            const trip = await TripModel.getById(id);
+
+            if (!trip) return res.status(404).json({ success: false, message: 'Trip not found' });
+            if (trip.status !== 'Planned') {
+                return res.status(400).json({ success: false, message: `Cannot cancel trip with status '${trip.status}'. Only planned trips can be cancelled.` });
+            }
+
+            const success = await TripModel.cancel(id);
+            if (!success) {
+                return res.status(500).json({ success: false, message: 'Failed to cancel trip' });
+            }
+
+            res.json({ success: true, message: 'Trip cancelled successfully' });
         } catch (error) {
             next(error);
         }
@@ -101,7 +111,18 @@ const TripController = {
     // GET /api/trips
     async getAllTrips(req, res, next) {
         try {
-            const trips = await TripModel.getAll();
+            const filters = {
+                status: req.query.status,
+                driver_id: req.query.driver,
+                truck_id: req.query.truck,
+                dateFrom: req.query.dateFrom,
+                dateTo: req.query.dateTo
+            };
+
+            // Remove undefined filters
+            Object.keys(filters).forEach(key => filters[key] === undefined && delete filters[key]);
+
+            const trips = await TripModel.getAll(filters);
             res.json({ success: true, count: trips.length, data: trips });
         } catch (error) {
             next(error);
@@ -115,6 +136,80 @@ const TripController = {
             const trip = await TripModel.getById(id);
             if (!trip) return res.status(404).json({ success: false, message: 'Trip not found' });
             res.json({ success: true, data: trip });
+        } catch (error) {
+            next(error);
+        }
+    },
+
+    // GET /api/trips/driver/:driverId
+    async getTripsByDriver(req, res, next) {
+        try {
+            const { driverId } = req.params;
+            const trips = await TripModel.getByDriver(driverId);
+            res.json({ success: true, count: trips.length, data: trips });
+        } catch (error) {
+            next(error);
+        }
+    },
+
+    // GET /api/trips/truck/:truckId
+    async getTripsByTruck(req, res, next) {
+        try {
+            const { truckId } = req.params;
+            const trips = await TripModel.getByTruck(truckId);
+            res.json({ success: true, count: trips.length, data: trips });
+        } catch (error) {
+            next(error);
+        }
+    },
+
+    // GET /api/trips/analytics
+    async getTripAnalytics(req, res, next) {
+        try {
+            const filters = {
+                driver_id: req.query.driver,
+                truck_id: req.query.truck,
+                dateFrom: req.query.dateFrom,
+                dateTo: req.query.dateTo
+            };
+
+            // Remove undefined filters
+            Object.keys(filters).forEach(key => filters[key] === undefined && delete filters[key]);
+
+            const analytics = await TripModel.getTripAnalytics(filters);
+            res.json({ success: true, data: analytics });
+        } catch (error) {
+            next(error);
+        }
+    },
+
+    // GET /api/trips/driver/:driverId/history
+    async getDriverTripHistory(req, res, next) {
+        try {
+            const { driverId } = req.params;
+            const history = await TripModel.getDriverTripHistory(driverId);
+            res.json({ success: true, data: history });
+        } catch (error) {
+            next(error);
+        }
+    },
+
+    // PUT /api/trips/:id
+    async updateTrip(req, res, next) {
+        try {
+            const { id } = req.params;
+            const updates = req.body;
+
+            const trip = await TripModel.getById(id);
+            if (!trip) return res.status(404).json({ success: false, message: 'Trip not found' });
+
+            const success = await TripModel.updateTripDetails(id, updates);
+            if (!success) {
+                return res.status(400).json({ success: false, message: 'No valid fields to update' });
+            }
+
+            const updatedTrip = await TripModel.getById(id);
+            res.json({ success: true, message: 'Trip updated successfully', data: updatedTrip });
         } catch (error) {
             next(error);
         }

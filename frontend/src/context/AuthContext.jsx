@@ -15,7 +15,12 @@ export const AuthProvider = ({ children }) => {
         const storedUser = localStorage.getItem('user');
 
         if (token && storedUser) {
-            setUser(JSON.parse(storedUser));
+            const parsedUser = JSON.parse(storedUser);
+            // Ensure backward compatibility with id/user_id
+            if (parsedUser.user_id && !parsedUser.id) {
+                parsedUser.id = parsedUser.user_id;
+            }
+            setUser(parsedUser);
             apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
         }
         setLoading(false);

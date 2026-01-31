@@ -1,10 +1,10 @@
 const pool = require('./db');
 
 async function initDatabase() {
-    const client = await pool.connect();
-
+    let client = null;
     try {
         console.log('🔄 Initializing PostgreSQL Database...');
+        client = await pool.connect();
 
         // Enable UUID extension (optional, for future use)
         await client.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
@@ -145,7 +145,7 @@ async function initDatabase() {
         console.error('Full error:', error);
         return false;
     } finally {
-        client.release();
+        if (client) client.release();
     }
 }
 
