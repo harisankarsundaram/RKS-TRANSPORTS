@@ -4,56 +4,58 @@ const TruckModel = {
     // Create a new truck
     async create(truckData) {
         const { truck_number, capacity, status, insurance_expiry, fitness_expiry } = truckData;
-        const [result] = await pool.execute(
+        const result = await pool.query(
             `INSERT INTO trucks (truck_number, capacity, status, insurance_expiry, fitness_expiry) 
-             VALUES (?, ?, ?, ?, ?)`,
+             VALUES ($1, $2, $3, $4, $5) RETURNING truck_id`,
             [truck_number, capacity, status || 'Available', insurance_expiry, fitness_expiry]
         );
-        return { truck_id: result.insertId, ...truckData };
+        return { truck_id: result.rows[0].truck_id, ...truckData };
     },
 
     // Get all trucks (excluding soft deleted)
     async getAll() {
-        const [rows] = await pool.execute(
+        const result = await pool.query(
             'SELECT * FROM trucks WHERE deleted_at IS NULL ORDER BY created_at DESC'
         );
-        return rows;
+        return result.rows;
     },
 
     // Get truck by ID
     async getById(id) {
-        const [rows] = await pool.execute(
-            'SELECT * FROM trucks WHERE truck_id = ? AND deleted_at IS NULL',
+        const result = await pool.query(
+            'SELECT * FROM trucks WHERE truck_id = $1 AND deleted_at IS NULL',
             [id]
         );
-        return rows[0] || null;
+        return result.rows[0] || null;
     },
 
     // Check if truck number exists (for validation)
     async findByTruckNumber(truck_number, excludeId = null) {
-        let query = 'SELECT * FROM trucks WHERE truck_number = ? AND deleted_at IS NULL';
+        let query = 'SELECT * FROM trucks WHERE truck_number = $1 AND deleted_at IS NULL';
         let params = [truck_number];
 
         if (excludeId) {
-            query += ' AND truck_id != ?';
+            query += ' AND truck_id != $2';
             params.push(excludeId);
         }
 
-        const [rows] = await pool.execute(query, params);
-        return rows[0] || null;
+        const result = await pool.query(query, params);
+        return result.rows[0] || null;
     },
 
     // Update truck
     async update(id, updateData) {
         const fields = [];
         const values = [];
+        let paramIndex = 1;
 
         const allowedFields = ['truck_number', 'capacity', 'status', 'insurance_expiry', 'fitness_expiry'];
 
         for (const field of allowedFields) {
             if (updateData[field] !== undefined) {
-                fields.push(`${field} = ?`);
+                fields.push(`${field} = $${paramIndex}`);
                 values.push(updateData[field]);
+                paramIndex++;
             }
         }
 
@@ -63,48 +65,48 @@ const TruckModel = {
 
         values.push(id);
 
-        const [result] = await pool.execute(
-            `UPDATE trucks SET ${fields.join(', ')} WHERE truck_id = ? AND deleted_at IS NULL`,
+        const result = await pool.query(
+            `UPDATE trucks SET ${fields.join(', ')} WHERE truck_id = $${paramIndex} AND deleted_at IS NULL`,
             values
         );
 
-        return result.affectedRows > 0;
+        return result.rowCount > 0;
     },
 
     // Update truck status
     async updateStatus(id, status) {
-        const [result] = await pool.execute(
-            'UPDATE trucks SET status = ? WHERE truck_id = ? AND deleted_at IS NULL',
+        const result = await pool.query(
+            'UPDATE trucks SET status = $1 WHERE truck_id = $2 AND deleted_at IS NULL',
             [status, id]
         );
-        return result.affectedRows > 0;
+        return result.rowCount > 0;
     },
 
     // Soft delete truck
     async delete(id) {
-        const [result] = await pool.execute(
-            'UPDATE trucks SET deleted_at = CURRENT_TIMESTAMP WHERE truck_id = ? AND deleted_at IS NULL',
+        const result = await pool.query(
+            'UPDATE trucks SET deleted_at = NOW() WHERE truck_id = $1 AND deleted_at IS NULL',
             [id]
         );
-        return result.affectedRows > 0;
+        return result.rowCount > 0;
     },
 
     // Check if truck has assigned driver
     async hasAssignedDriver(truckId) {
-        const [rows] = await pool.execute(
-            'SELECT driver_id FROM drivers WHERE assigned_truck_id = ? AND deleted_at IS NULL',
+        const result = await pool.query(
+            'SELECT driver_id FROM drivers WHERE assigned_truck_id = $1 AND deleted_at IS NULL',
             [truckId]
         );
-        return rows.length > 0;
+        return result.rows.length > 0;
     },
 
     // Get assigned driver ID
     async getAssignedDriver(truckId) {
-        const [rows] = await pool.execute(
-            'SELECT driver_id FROM drivers WHERE assigned_truck_id = ? AND deleted_at IS NULL',
+        const result = await pool.query(
+            'SELECT driver_id FROM drivers WHERE assigned_truck_id = $1 AND deleted_at IS NULL',
             [truckId]
         );
-        return rows[0] ? rows[0].driver_id : null;
+        return result.rows[0] ? result.rows[0].driver_id : null;
     }
 };
 

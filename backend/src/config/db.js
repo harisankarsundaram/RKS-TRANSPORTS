@@ -1,66 +1,31 @@
-const sqlite3 = require('sqlite3');
-const { open } = require('sqlite');
-const path = require('path');
+const { Pool } = require('pg');
+require('dotenv').config();
 
-let dbInstance = null;
-
-async function getDb() {
-    if (dbInstance) return dbInstance;
-    dbInstance = await open({
-        filename: path.join(__dirname, '../../database.sqlite'),
-        driver: sqlite3.Database
-    });
-    // Enable foreign keys
-    await dbInstance.run('PRAGMA foreign_keys = ON');
-    return dbInstance;
-}
-
-const pool = {
-    query: async (sql, params) => {
-        const db = await getDb();
-        try {
-            // Check if it's SELECT
-            if (sql.trim().toUpperCase().startsWith('SELECT')) {
-                const rows = await db.all(sql, params);
-                return [rows, []]; // Return compatible [rows, fields] format
-            } else {
-                const result = await db.run(sql, params);
-                // Return compatible [result] format
-                // mysql2 result has: insertId, affectedRows
-                return [{
-                    insertId: result.lastID,
-                    affectedRows: result.changes
-                }, []];
-            }
-        } catch (error) {
-            console.error('SQL Error:', error.message, 'SQL:', sql);
-            throw error;
-        }
+// Create PostgreSQL connection pool
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+        rejectUnauthorized: false // Required for NeonDB
     },
-    execute: async (sql, params) => {
-        return pool.query(sql, params);
-    },
-    getConnection: async () => {
-        // Return a mock connection object that uses the shared pool
-        return {
-            release: () => { },
-            beginTransaction: async () => { /* No-op for now */ },
-            commit: async () => { /* No-op */ },
-            rollback: async () => { /* No-op */ },
-            query: async (s, p) => pool.query(s, p),
-            execute: async (s, p) => pool.query(s, p)
-        }
-    },
-    end: async () => { if (dbInstance) await dbInstance.close(); }
-};
+    max: 20, // Maximum number of clients in the pool
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 2000,
+});
 
 // Test connection
-getDb()
+pool.query('SELECT NOW()')
     .then(() => {
-        console.log('SQLite Database connected successfully');
+        console.log('✅ PostgreSQL Database connected successfully');
     })
     .catch(err => {
-        console.error('SQLite Database connection failed:', err.message);
+        console.error('❌ PostgreSQL Database connection failed:', err.message);
+        process.exit(1);
     });
+
+// Handle pool errors
+pool.on('error', (err) => {
+    console.error('Unexpected error on idle client', err);
+    process.exit(-1);
+});
 
 module.exports = pool;
