@@ -1,5 +1,8 @@
 const TripModel = require('../models/tripModel');
 const TruckModel = require('../models/truckModel');
+const ExpenseModel = require('../models/expenseModel');
+const InvoiceModel = require('../models/invoiceModel');
+const FinanceService = require('../services/financeService');
 
 // Helper for date validation
 const isValidDate = (d) => d instanceof Date && !isNaN(d);
@@ -8,11 +11,26 @@ const TripController = {
     // POST /api/trips
     async createTrip(req, res, next) {
         try {
-            const { truck_id, driver_id, lr_number, source, destination, freight_amount } = req.body;
+            const {
+                truck_id, driver_id, lr_number, source, destination,
+                freight_amount, base_freight,
+                toll_amount, toll_billable,
+                loading_cost, loading_billable,
+                unloading_cost, unloading_billable,
+                other_charges, other_billable,
+                gst_percentage, driver_bata,
+                empty_km, loaded_km
+            } = req.body;
 
             // 1. Validate Basic Inputs
-            if (!truck_id || !driver_id || !lr_number || !source || !destination || !freight_amount) {
-                return res.status(400).json({ success: false, message: 'All fields (truck_id, driver_id, lr_number, source, destination, freight_amount) are required' });
+            if (!truck_id || !driver_id || !lr_number || !source || !destination) {
+                return res.status(400).json({ success: false, message: 'Required fields: truck_id, driver_id, lr_number, source, destination' });
+            }
+
+            // Must have either freight_amount or base_freight
+            const effectiveFreight = base_freight || freight_amount;
+            if (!effectiveFreight || parseFloat(effectiveFreight) <= 0) {
+                return res.status(400).json({ success: false, message: 'base_freight (or freight_amount) is required and must be > 0' });
             }
 
             // 2. Validate Truck/Driver Assignment
@@ -33,14 +51,21 @@ const TripController = {
                 return res.status(409).json({ success: false, message: 'LR Number already exists' });
             }
 
-            // 5. Create Planned Trip
+            // 5. Create Planned Trip with all financial fields
             const trip = await TripModel.create({
                 truck_id,
                 driver_id,
                 lr_number,
                 source,
                 destination,
-                freight_amount
+                freight_amount: effectiveFreight,
+                base_freight: effectiveFreight,
+                toll_amount, toll_billable,
+                loading_cost, loading_billable,
+                unloading_cost, unloading_billable,
+                other_charges, other_billable,
+                gst_percentage, driver_bata,
+                empty_km, loaded_km
             });
 
             res.status(201).json({ success: true, message: 'Trip planned successfully', data: trip });
@@ -113,13 +138,12 @@ const TripController = {
         try {
             const filters = {
                 status: req.query.status,
-                driver_id: req.query.driver,
+                driver_id: req.query.driver || req.query.driver_id,
                 truck_id: req.query.truck,
                 dateFrom: req.query.dateFrom,
                 dateTo: req.query.dateTo
             };
 
-            // Remove undefined filters
             Object.keys(filters).forEach(key => filters[key] === undefined && delete filters[key]);
 
             const trips = await TripModel.getAll(filters);
@@ -129,13 +153,28 @@ const TripController = {
         }
     },
 
-    // GET /api/trips/:id
+    // GET /api/trips/:id — with financial summary
     async getTripById(req, res, next) {
         try {
             const { id } = req.params;
             const trip = await TripModel.getById(id);
             if (!trip) return res.status(404).json({ success: false, message: 'Trip not found' });
-            res.json({ success: true, data: trip });
+
+            // Enrich with financial summary
+            const expenseTotal = await ExpenseModel.getTotalByTrip(id);
+            const invoice = await InvoiceModel.getByTripId(id);
+            const internalCost = FinanceService.calculateInternalCost(trip, expenseTotal);
+            const deadMileage = FinanceService.calculateDeadMileage(trip.empty_km, trip.loaded_km);
+
+            const financials = {
+                expense_total: expenseTotal,
+                internal_cost: internalCost,
+                dead_mileage_pct: deadMileage,
+                invoice: invoice || null,
+                profit: invoice ? FinanceService.calculateProfit(invoice.total_amount, internalCost) : null
+            };
+
+            res.json({ success: true, data: { ...trip, financials } });
         } catch (error) {
             next(error);
         }
@@ -163,7 +202,7 @@ const TripController = {
         }
     },
 
-    // GET /api/trips/analytics
+    // GET /api/trips/analytics/summary — Enhanced with financial KPIs
     async getTripAnalytics(req, res, next) {
         try {
             const filters = {
@@ -173,11 +212,28 @@ const TripController = {
                 dateTo: req.query.dateTo
             };
 
-            // Remove undefined filters
             Object.keys(filters).forEach(key => filters[key] === undefined && delete filters[key]);
 
             const analytics = await TripModel.getTripAnalytics(filters);
-            res.json({ success: true, data: analytics });
+            const invoiceTotals = await InvoiceModel.getDashboardTotals();
+            const expenseTotals = await ExpenseModel.getGlobalTotals();
+            const availableCount = await TruckModel.getAvailableCount();
+
+            const totalRevenue = parseFloat(invoiceTotals.total_revenue) || 0;
+            const totalExpenses = parseFloat(expenseTotals.total_expenses) || 0;
+
+            res.json({
+                success: true,
+                data: {
+                    total_revenue: totalRevenue,
+                    total_outstanding: parseFloat(invoiceTotals.total_outstanding) || 0,
+                    total_expenses: totalExpenses,
+                    net_profit: FinanceService.calculateProfit(totalRevenue, totalExpenses),
+                    average_dead_mileage_percent: analytics.avg_dead_mileage_pct || 0,
+                    running_trips_count: parseInt(analytics.running_trips) || 0,
+                    available_trucks_count: availableCount
+                }
+            });
         } catch (error) {
             next(error);
         }

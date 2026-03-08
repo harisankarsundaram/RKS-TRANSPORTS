@@ -12,11 +12,13 @@ import LorryManagement from './pages/LorryManagement'
 import DriverManagement from './pages/DriverManagement'
 import TripManagement from './pages/TripManagement'
 import FuelTracking from './pages/FuelTracking'
+import MaintenanceManagement from './pages/MaintenanceManagement'
+import ExpenseManagement from './pages/ExpenseManagement'
+import InvoiceManagement from './pages/InvoiceManagement'
 import './App.css'
 
 function DashboardRedirect() {
   const { user, loading } = useAuth();
-  console.log('DashboardRedirect User:', user);
   if (loading) return null;
   if (user?.role === 'admin') return <Navigate to="/dashboard/admin" replace />;
   if (user?.role === 'driver') return <Navigate to="/dashboard/driver" replace />;
@@ -42,6 +44,9 @@ function App() {
           <Route path="drivers" element={<DriverManagement />} />
           <Route path="trips" element={<TripManagement />} />
           <Route path="fuel" element={<FuelTracking />} />
+          <Route path="maintenance" element={<MaintenanceManagement />} />
+          <Route path="expenses" element={<ExpenseManagement />} />
+          <Route path="invoices" element={<InvoiceManagement />} />
         </Route>
       </Route>
 

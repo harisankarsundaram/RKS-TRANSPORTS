@@ -9,6 +9,7 @@ const fuelRoutes = require('./routes/fuelRoutes');
 const maintenanceRoutes = require('./routes/maintenanceRoutes');
 const invoiceRoutes = require('./routes/invoiceRoutes');
 const authRoutes = require('./routes/authRoutes');
+const expenseRoutes = require('./routes/expenseRoutes');
 
 
 const errorHandler = require('./middleware/errorHandler');
@@ -37,6 +38,7 @@ app.use('/api/gps', gpsRoutes);
 app.use('/api/maintenance', maintenanceRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api', assignmentRoutes);
+app.use('/api/expenses', expenseRoutes);
 
 // 404 handler
 app.use((req, res) => {

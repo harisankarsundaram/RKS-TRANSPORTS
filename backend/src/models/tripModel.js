@@ -1,13 +1,51 @@
 const pool = require('../config/db');
 
 const TripModel = {
-    // Create Validated Trip
+    // Create Validated Trip (with financial fields)
     async create(tripData) {
-        const { truck_id, driver_id, lr_number, source, destination, freight_amount } = tripData;
+        const {
+            truck_id, driver_id, lr_number, source, destination,
+            base_freight,
+            toll_amount, toll_billable,
+            loading_cost, loading_billable,
+            unloading_cost, unloading_billable,
+            other_charges, other_billable,
+            gst_percentage, driver_bata,
+            empty_km, loaded_km
+        } = tripData;
+
         const result = await pool.query(
-            `INSERT INTO trips (truck_id, driver_id, lr_number, source, destination, freight_amount, status, created_at) 
-             VALUES ($1, $2, $3, $4, $5, $6, 'Planned', NOW()) RETURNING trip_id`,
-            [truck_id, driver_id, lr_number, source, destination, freight_amount]
+            `INSERT INTO trips (
+                truck_id, driver_id, lr_number, source, destination,
+                base_freight,
+                toll_amount, toll_billable,
+                loading_cost, loading_billable,
+                unloading_cost, unloading_billable,
+                other_charges, other_billable,
+                gst_percentage, driver_bata,
+                empty_km, loaded_km,
+                status, created_at
+            ) VALUES (
+                $1, $2, $3, $4, $5,
+                $6,
+                $7, $8,
+                $9, $10,
+                $11, $12,
+                $13, $14,
+                $15, $16,
+                $17, $18,
+                'Planned', NOW()
+            ) RETURNING trip_id`,
+            [
+                truck_id, driver_id, lr_number, source, destination,
+                base_freight || 0,
+                toll_amount || 0, toll_billable || false,
+                loading_cost || 0, loading_billable || false,
+                unloading_cost || 0, unloading_billable || false,
+                other_charges || 0, other_billable || false,
+                gst_percentage || 0, driver_bata || 0,
+                empty_km || 0, loaded_km || 0
+            ]
         );
         return { trip_id: result.rows[0].trip_id, ...tripData, status: 'Planned' };
     },
@@ -66,13 +104,21 @@ const TripModel = {
         return result.rowCount > 0;
     },
 
-    // Update Trip Details
+    // Update Trip Details (expanded with financial fields)
     async updateTripDetails(tripId, updates) {
         const fields = [];
         const values = [];
         let paramIndex = 1;
 
-        const allowedFields = ['distance_km', 'freight_amount', 'source', 'destination'];
+        const allowedFields = [
+            'distance_km', 'source', 'destination',
+            'base_freight', 'toll_amount', 'toll_billable',
+            'loading_cost', 'loading_billable',
+            'unloading_cost', 'unloading_billable',
+            'other_charges', 'other_billable',
+            'gst_percentage', 'driver_bata',
+            'empty_km', 'loaded_km'
+        ];
 
         for (const field of allowedFields) {
             if (updates[field] !== undefined) {
@@ -96,7 +142,7 @@ const TripModel = {
         return result.rowCount > 0;
     },
 
-    // Get Trip Details
+    // Get Trip Details (with all financial columns)
     async getById(tripId) {
         const result = await pool.query(
             `SELECT t.*, tr.truck_number, tr.capacity, d.name as driver_name, d.phone as driver_phone 
@@ -121,28 +167,24 @@ const TripModel = {
         const params = [];
         let paramIndex = 1;
 
-        // Filter by status
         if (filters.status) {
             query += ` AND t.status = $${paramIndex}`;
             params.push(filters.status);
             paramIndex++;
         }
 
-        // Filter by driver
         if (filters.driver_id) {
             query += ` AND t.driver_id = $${paramIndex}`;
             params.push(filters.driver_id);
             paramIndex++;
         }
 
-        // Filter by truck
         if (filters.truck_id) {
             query += ` AND t.truck_id = $${paramIndex}`;
             params.push(filters.truck_id);
             paramIndex++;
         }
 
-        // Filter by date range
         if (filters.dateFrom) {
             query += ` AND t.created_at >= $${paramIndex}`;
             params.push(filters.dateFrom);
@@ -215,46 +257,50 @@ const TripModel = {
         return result.rows;
     },
 
-    // Get trip analytics
+    // Get trip analytics (enhanced with financial data)
     async getTripAnalytics(filters = {}) {
         let query = `
             SELECT 
                 COUNT(*) as total_trips,
-                COUNT(CASE WHEN status = 'Completed' THEN 1 END) as completed_trips,
-                COUNT(CASE WHEN status = 'Running' THEN 1 END) as running_trips,
-                COUNT(CASE WHEN status = 'Planned' THEN 1 END) as planned_trips,
-                COUNT(CASE WHEN status = 'Cancelled' THEN 1 END) as cancelled_trips,
-                COALESCE(SUM(CASE WHEN status = 'Completed' THEN freight_amount ELSE 0 END), 0) as total_revenue,
-                COALESCE(SUM(CASE WHEN status = 'Completed' THEN distance_km ELSE 0 END), 0) as total_distance,
-                COALESCE(AVG(CASE WHEN status = 'Completed' THEN freight_amount END), 0) as average_freight,
-                COALESCE(AVG(CASE WHEN status = 'Completed' THEN distance_km END), 0) as average_distance
-            FROM trips
+                COUNT(CASE WHEN t.status = 'Completed' THEN 1 END) as completed_trips,
+                COUNT(CASE WHEN t.status = 'Running' THEN 1 END) as running_trips,
+                COUNT(CASE WHEN t.status = 'Planned' THEN 1 END) as planned_trips,
+                COUNT(CASE WHEN t.status = 'Cancelled' THEN 1 END) as cancelled_trips,
+                COALESCE(SUM(CASE WHEN t.status = 'Completed' THEN t.base_freight ELSE 0 END), 0) as total_base_revenue,
+                COALESCE(SUM(CASE WHEN t.status = 'Completed' THEN t.distance_km ELSE 0 END), 0) as total_distance,
+                COALESCE(AVG(CASE WHEN t.status = 'Completed' THEN t.base_freight END), 0) as average_base_freight,
+                COALESCE(AVG(CASE WHEN t.status = 'Completed' THEN t.distance_km END), 0) as average_distance,
+                COALESCE(AVG(
+                    CASE WHEN t.status = 'Completed' AND (t.empty_km + t.loaded_km) > 0 
+                    THEN (t.empty_km / (t.empty_km + t.loaded_km)) * 100 
+                    END
+                ), 0) as avg_dead_mileage_pct
+            FROM trips t
             WHERE 1=1
         `;
         const params = [];
         let paramIndex = 1;
 
-        // Apply filters
         if (filters.driver_id) {
-            query += ` AND driver_id = $${paramIndex}`;
+            query += ` AND t.driver_id = $${paramIndex}`;
             params.push(filters.driver_id);
             paramIndex++;
         }
 
         if (filters.truck_id) {
-            query += ` AND truck_id = $${paramIndex}`;
+            query += ` AND t.truck_id = $${paramIndex}`;
             params.push(filters.truck_id);
             paramIndex++;
         }
 
         if (filters.dateFrom) {
-            query += ` AND created_at >= $${paramIndex}`;
+            query += ` AND t.created_at >= $${paramIndex}`;
             params.push(filters.dateFrom);
             paramIndex++;
         }
 
         if (filters.dateTo) {
-            query += ` AND created_at <= $${paramIndex}`;
+            query += ` AND t.created_at <= $${paramIndex}`;
             params.push(filters.dateTo);
             paramIndex++;
         }
@@ -279,7 +325,7 @@ const TripModel = {
                 COUNT(*) as total_trips,
                 COUNT(CASE WHEN status = 'Completed' THEN 1 END) as completed_trips,
                 COALESCE(SUM(CASE WHEN status = 'Completed' THEN distance_km ELSE 0 END), 0) as total_distance,
-                COALESCE(SUM(CASE WHEN status = 'Completed' THEN freight_amount ELSE 0 END), 0) as total_revenue
+                COALESCE(SUM(CASE WHEN status = 'Completed' THEN base_freight ELSE 0 END), 0) as total_revenue
              FROM trips
              WHERE driver_id = $1`,
             [driverId]

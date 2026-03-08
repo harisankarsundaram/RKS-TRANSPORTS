@@ -29,6 +29,11 @@ const TruckModel = {
         return result.rows[0] || null;
     },
 
+    async getAvailableCount() {
+        const result = await pool.query("SELECT COUNT(*) FROM trucks WHERE status = 'Available' AND deleted_at IS NULL");
+        return parseInt(result.rows[0].count);
+    },
+
     // Check if truck number exists (for validation)
     async findByTruckNumber(truck_number, excludeId = null) {
         let query = 'SELECT * FROM trucks WHERE truck_number = $1 AND deleted_at IS NULL';

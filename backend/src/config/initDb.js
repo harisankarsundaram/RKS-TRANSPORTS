@@ -74,60 +74,81 @@ async function initDatabase() {
             )
         `);
 
-        // Create GPS logs table
+        // ── Financial Enhancement: ALTER trips table with new columns ──
+        // 1️⃣ Rename freight_amount to base_freight if it exists
         await client.query(`
-            CREATE TABLE IF NOT EXISTS gps_logs (
-                gps_id SERIAL PRIMARY KEY,
-                truck_id INTEGER NOT NULL,
-                trip_id INTEGER NOT NULL,
-                latitude DECIMAL(9,6) NOT NULL,
-                longitude DECIMAL(9,6) NOT NULL,
-                recorded_at TIMESTAMP DEFAULT NOW(),
-                FOREIGN KEY (truck_id) REFERENCES trucks(truck_id),
-                FOREIGN KEY (trip_id) REFERENCES trips(trip_id)
-            )
+            DO $$ 
+            BEGIN 
+                -- Only rename if freight_amount exists AND base_freight DOES NOT exist
+                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trips' AND column_name='freight_amount') THEN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trips' AND column_name='base_freight') THEN
+                        ALTER TABLE trips RENAME COLUMN freight_amount TO base_freight;
+                    ELSE
+                        -- If both exist, we just drop the old one to avoid confusion and clean up the schema
+                        ALTER TABLE trips DROP COLUMN freight_amount;
+                    END IF;
+                END IF;
+            END $$;
         `);
 
-        // Create fuel logs table
+        const tripAlterColumns = [
+            { name: 'base_freight', type: 'NUMERIC(12,2) DEFAULT 0' },
+            { name: 'toll_amount', type: 'NUMERIC(12,2) DEFAULT 0' },
+            { name: 'toll_billable', type: 'BOOLEAN DEFAULT false' },
+            { name: 'loading_cost', type: 'NUMERIC(12,2) DEFAULT 0' },
+            { name: 'loading_billable', type: 'BOOLEAN DEFAULT false' },
+            { name: 'unloading_cost', type: 'NUMERIC(12,2) DEFAULT 0' },
+            { name: 'unloading_billable', type: 'BOOLEAN DEFAULT false' },
+            { name: 'other_charges', type: 'NUMERIC(12,2) DEFAULT 0' },
+            { name: 'other_billable', type: 'BOOLEAN DEFAULT false' },
+            { name: 'gst_percentage', type: 'NUMERIC(5,2) DEFAULT 0' },
+            { name: 'driver_bata', type: 'NUMERIC(12,2) DEFAULT 0' },
+            { name: 'empty_km', type: 'NUMERIC(10,2) DEFAULT 0' },
+            { name: 'loaded_km', type: 'NUMERIC(10,2) DEFAULT 0' },
+        ];
+
+        for (const col of tripAlterColumns) {
+            await client.query(`
+                ALTER TABLE trips ADD COLUMN IF NOT EXISTS ${col.name} ${col.type}
+            `);
+        }
+        console.log('  ✔ trips table columns ensured (base_freight renamed)');
+
+        // ... (gps_logs, fuel_logs, maintenance tables) ...
+
+        // ── Financial Enhancement: Create expenses table (UUID) ──
+        await client.query('DROP TABLE IF EXISTS expenses CASCADE');
         await client.query(`
-            CREATE TABLE IF NOT EXISTS fuel_logs (
-                fuel_id SERIAL PRIMARY KEY,
-                trip_id INTEGER NOT NULL,
-                liters DECIMAL(10,2) NOT NULL,
-                price_per_liter DECIMAL(10,2) NOT NULL,
-                total_cost DECIMAL(10,2) NOT NULL,
-                created_at TIMESTAMP DEFAULT NOW(),
-                FOREIGN KEY (trip_id) REFERENCES trips(trip_id)
+            CREATE TABLE expenses (
+                expense_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                trip_id INTEGER REFERENCES trips(trip_id) ON DELETE CASCADE,
+                truck_id INTEGER REFERENCES trucks(truck_id),
+                category VARCHAR(50) NOT NULL CHECK(category IN ('Fuel','Toll','Maintenance','Driver','RTO','Insurance','Misc')),
+                amount NUMERIC(12,2) NOT NULL,
+                description TEXT,
+                created_at TIMESTAMP DEFAULT NOW()
             )
         `);
+        console.log('  ✔ expenses table created with UUID PK');
 
-        // Create maintenance table
+        // ── Financial Enhancement: Rebuild invoices table (UUID) ──
+        await client.query('DROP TABLE IF EXISTS invoices CASCADE');
         await client.query(`
-            CREATE TABLE IF NOT EXISTS maintenance (
-                maintenance_id SERIAL PRIMARY KEY,
-                truck_id INTEGER NOT NULL,
-                service_date DATE NOT NULL,
-                description TEXT NOT NULL,
-                cost DECIMAL(10,2) NOT NULL,
-                created_at TIMESTAMP DEFAULT NOW(),
-                FOREIGN KEY (truck_id) REFERENCES trucks(truck_id)
-            )
-        `);
-
-        // Create invoices table
-        await client.query(`
-            CREATE TABLE IF NOT EXISTS invoices (
-                invoice_id SERIAL PRIMARY KEY,
-                trip_id INTEGER NOT NULL,
-                total_amount DECIMAL(10,2) NOT NULL,
-                advance_amount DECIMAL(10,2) DEFAULT 0,
-                balance_amount DECIMAL(10,2) DEFAULT 0,
-                payment_status VARCHAR(20) DEFAULT 'Pending' CHECK(payment_status IN ('Pending', 'Paid', 'Partial')),
+            CREATE TABLE invoices (
+                invoice_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                trip_id INTEGER UNIQUE REFERENCES trips(trip_id),
+                invoice_number VARCHAR(50) UNIQUE NOT NULL,
                 invoice_date DATE NOT NULL,
-                created_at TIMESTAMP DEFAULT NOW(),
-                FOREIGN KEY (trip_id) REFERENCES trips(trip_id)
+                due_date DATE NOT NULL,
+                subtotal NUMERIC(12,2) NOT NULL,
+                gst_amount NUMERIC(12,2) NOT NULL,
+                total_amount NUMERIC(12,2) NOT NULL,
+                payment_status VARCHAR(20) DEFAULT 'Pending' CHECK(payment_status IN ('Pending','Partial','Paid')),
+                amount_paid NUMERIC(12,2) DEFAULT 0,
+                created_at TIMESTAMP DEFAULT NOW()
             )
         `);
+        console.log('  ✔ invoices table created with UUID PK');
 
         // Create indexes for performance
         await client.query('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)');
@@ -137,6 +158,11 @@ async function initDatabase() {
         await client.query('CREATE INDEX IF NOT EXISTS idx_trips_status ON trips(status)');
         await client.query('CREATE INDEX IF NOT EXISTS idx_gps_logs_trip_id ON gps_logs(trip_id)');
         await client.query('CREATE INDEX IF NOT EXISTS idx_fuel_logs_trip_id ON fuel_logs(trip_id)');
+        await client.query('CREATE INDEX IF NOT EXISTS idx_expenses_trip_id ON expenses(trip_id)');
+        await client.query('CREATE INDEX IF NOT EXISTS idx_expenses_truck_id ON expenses(truck_id)');
+        await client.query('CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses(category)');
+        await client.query('CREATE INDEX IF NOT EXISTS idx_invoices_trip_id ON invoices(trip_id)');
+        await client.query('CREATE INDEX IF NOT EXISTS idx_invoices_payment_status ON invoices(payment_status)');
 
         console.log('✅ PostgreSQL Database and tables initialized successfully');
         return true;

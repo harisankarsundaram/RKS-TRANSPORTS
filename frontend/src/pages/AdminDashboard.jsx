@@ -14,40 +14,23 @@ function AdminDashboard() {
         total_trucks: 0,
         total_drivers: 0
     });
+    const [financials, setFinancials] = useState({
+        total_revenue: 0,
+        total_outstanding: 0,
+        total_expenses: 0,
+        net_profit: 0,
+        average_dead_mileage_percent: 0,
+        running_trips_count: 0,
+        available_trucks_count: 0
+    });
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const fetchStats = async () => {
             try {
-                // Fetch trip analytics
-                const tripRes = await apiClient.get('/trips/analytics/summary');
-                const tripData = tripRes.data;
-                console.log('Dashboard Analytics:', tripData);
-
-                // Fetch truck counts
-                const truckRes = await apiClient.get('/trucks');
-                const truckData = truckRes.data;
-                console.log('Dashboard Trucks:', truckData);
-
-                // Fetch driver counts
-                const driverRes = await apiClient.get('/drivers');
-                const driverData = driverRes.data;
-                console.log('Dashboard Drivers:', driverData);
-
-                if (tripData.success && truckData.success && driverData.success) {
-                    const newStats = {
-                        total_trips: Number(tripData.data.total_trips),
-                        running_trips: Number(tripData.data.running_trips),
-                        total_revenue: Number(tripData.data.total_revenue),
-                        active_trucks: truckData.data.filter(t => t.status === 'Assigned').length,
-                        total_trucks: truckData.data.length,
-                        active_drivers: driverData.data.filter(d => d.status === 'Assigned').length,
-                        total_drivers: driverData.data.length
-                    };
-                    console.log('Setting Stats:', newStats);
-                    setStats(newStats);
-                } else {
-                    console.warn('One or more API calls failed:', { trip: tripData.success, truck: truckData.success, driver: driverData.success });
+                const res = await apiClient.get('/trips/analytics/summary');
+                if (res.data.success) {
+                    setFinancials(res.data.data);
                 }
             } catch (error) {
                 console.error('Error fetching dashboard stats:', error);
@@ -74,28 +57,55 @@ function AdminDashboard() {
                 <p>Welcome back, {user?.name}</p>
             </header>
 
-            {/* Stats Grid */}
+            {/* Fleet Stats Grid */}
             <section className="stats-grid">
                 <div className="stat-card">
-                    <div className="stat-value">{loading ? '...' : stats.total_trucks}</div>
-                    <div className="stat-label">Total Trucks</div>
+                    <div className="stat-value">{loading ? '...' : financials.available_trucks_count}</div>
+                    <div className="stat-label">Available Trucks</div>
                 </div>
                 <div className="stat-card">
-                    <div className="stat-value">{loading ? '...' : stats.active_drivers}</div>
-                    <div className="stat-label">Drivers On Trip</div>
-                </div>
-                <div className="stat-card">
-                    <div className="stat-value">{loading ? '...' : stats.running_trips}</div>
+                    <div className="stat-value">{loading ? '...' : financials.running_trips_count}</div>
                     <div className="stat-label">Running Trips</div>
                 </div>
                 <div className="stat-card">
-                    <div className="stat-value">{loading ? '...' : formatCurrency(stats.total_revenue)}</div>
+                    <div className="stat-value">
+                        {loading ? '...' : `${Number(financials.average_dead_mileage_percent).toFixed(1)}%`}
+                    </div>
+                    <div className="stat-label">Avg Dead Mileage</div>
+                </div>
+            </section>
+
+            {/* Financial KPIs */}
+            <h3 style={{ marginTop: '2rem', marginBottom: '1.5rem', color: '#2d3748' }}>Intelligence Dashboard</h3>
+            <section className="stats-grid">
+                <div className="stat-card" style={{ borderLeft: '4px solid #48bb78' }}>
+                    <div className="stat-value" style={{ color: '#2f855a' }}>
+                        {loading ? '...' : formatCurrency(financials.total_revenue)}
+                    </div>
                     <div className="stat-label">Total Revenue</div>
+                </div>
+                <div className="stat-card" style={{ borderLeft: '4px solid #ed8936' }}>
+                    <div className="stat-value" style={{ color: '#c05621' }}>
+                        {loading ? '...' : formatCurrency(financials.total_outstanding)}
+                    </div>
+                    <div className="stat-label">Total Outstanding</div>
+                </div>
+                <div className="stat-card" style={{ borderLeft: '4px solid #e53e3e' }}>
+                    <div className="stat-value" style={{ color: '#c53030' }}>
+                        {loading ? '...' : formatCurrency(financials.total_expenses)}
+                    </div>
+                    <div className="stat-label">Total Expenses Ledger</div>
+                </div>
+                <div className="stat-card" style={{ borderLeft: `4px solid ${financials.net_profit >= 0 ? '#48bb78' : '#e53e3e'}` }}>
+                    <div className="stat-value" style={{ color: financials.net_profit >= 0 ? '#2f855a' : '#c53030' }}>
+                        {loading ? '...' : formatCurrency(financials.net_profit)}
+                    </div>
+                    <div className="stat-label">Net Profit (Loss)</div>
                 </div>
             </section>
 
             {/* Quick Actions */}
-            <h3 style={{ marginBottom: '1.5rem', color: '#2d3748' }}>Operation Centers</h3>
+            <h3 style={{ marginTop: '2rem', marginBottom: '1.5rem', color: '#2d3748' }}>Operation Centers</h3>
             <section className="action-grid">
                 <Link to="/lorries" className="action-card">
                     <h3>Manage Lorries &rarr;</h3>

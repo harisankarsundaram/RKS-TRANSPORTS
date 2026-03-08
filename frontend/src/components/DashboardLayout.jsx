@@ -27,31 +27,43 @@ function DashboardLayout({ role }) {
                     {role === 'admin' ? (
                         <>
                             <NavLink to="/dashboard/admin" end className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-                                <span>Overview</span>
+                                <span>📊 Overview</span>
                             </NavLink>
                             <NavLink to="/lorries" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-                                <span>Lorry Management</span>
+                                <span>🚛 Lorry Management</span>
                             </NavLink>
                             <NavLink to="/drivers" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-                                <span>Driver Management</span>
+                                <span>👨‍✈️ Driver Management</span>
                             </NavLink>
                             <NavLink to="/trips" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-                                <span>Trip Management</span>
+                                <span>🛣️ Trip Management</span>
                             </NavLink>
                             <NavLink to="/fuel" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-                                <span>Fuel Tracking</span>
+                                <span>⛽ Fuel Tracking</span>
                             </NavLink>
+                            <NavLink to="/maintenance" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+                                <span>🛠️ Maintenance</span>
+                            </NavLink>
+
+                            <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                                <NavLink to="/expenses" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+                                    <span>💸 Expenses</span>
+                                </NavLink>
+                                <NavLink to="/invoices" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+                                    <span>🧾 Invoices</span>
+                                </NavLink>
+                            </div>
                         </>
                     ) : (
                         <>
                             <NavLink to="/dashboard/driver" end className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-                                <span>My Dashboard</span>
+                                <span>📊 My Dashboard</span>
                             </NavLink>
                             <NavLink to="/fuel" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-                                <span>Fuel Tracking</span>
+                                <span>⛽ Fuel Tracking</span>
                             </NavLink>
                             <NavLink to="/trips/history" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-                                <span>Trip History</span>
+                                <span>🛣️ Trip History</span>
                             </NavLink>
                         </>
                     )}

@@ -1,0 +1,181 @@
+import { useState, useEffect } from 'react';
+import apiClient from '../api/client';
+import './Management.css';
+
+const CATEGORIES = ['Fuel', 'Toll', 'Maintenance', 'Driver', 'RTO', 'Insurance', 'Misc'];
+
+function ExpenseManagement() {
+    const [expenses, setExpenses] = useState([]);
+    const [trips, setTrips] = useState([]);
+    const [trucks, setTrucks] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [message, setMessage] = useState({ text: '', type: '' });
+    const [filterCat, setFilterCat] = useState('All');
+    const [formData, setFormData] = useState({
+        trip_id: '', truck_id: '', category: 'Fuel', amount: '', description: ''
+    });
+
+    useEffect(() => {
+        fetchExpenses();
+        fetchDropdowns();
+    }, []);
+
+    async function fetchExpenses() {
+        setLoading(true);
+        try {
+            const res = await apiClient.get('/expenses');
+            if (res.data.success) setExpenses(res.data.data);
+        } catch (err) { console.error(err); }
+        finally { setLoading(false); }
+    }
+
+    async function fetchDropdowns() {
+        try {
+            const [tripRes, truckRes] = await Promise.all([
+                apiClient.get('/trips'),
+                apiClient.get('/trucks')
+            ]);
+            if (tripRes.data.success) setTrips(tripRes.data.data);
+            if (truckRes.data.success) setTrucks(truckRes.data.data);
+        } catch (e) { console.error(e); }
+    }
+
+    const showMsg = (text, type = 'success') => {
+        setMessage({ text, type });
+        setTimeout(() => setMessage({ text: '', type: '' }), 4000);
+    };
+
+    async function handleSubmit(e) {
+        e.preventDefault();
+        try {
+            const payload = {
+                ...formData,
+                trip_id: formData.trip_id ? parseInt(formData.trip_id) : null,
+                truck_id: formData.truck_id ? parseInt(formData.truck_id) : null,
+                amount: parseFloat(formData.amount)
+            };
+            await apiClient.post('/expenses', payload);
+            showMsg('Expense added!');
+            setFormData({ trip_id: '', truck_id: '', category: 'Fuel', amount: '', description: '' });
+            fetchExpenses();
+        } catch (err) {
+            showMsg(err.response?.data?.message || 'Error adding expense', 'error');
+        }
+    }
+
+    async function handleDelete(id) {
+        if (!window.confirm('Delete this expense?')) return;
+        try {
+            await apiClient.delete(`/expenses/${id}`);
+            showMsg('Expense deleted');
+            fetchExpenses();
+        } catch (err) {
+            showMsg(err.response?.data?.message || 'Error', 'error');
+        }
+    }
+
+    const filtered = filterCat === 'All' ? expenses : expenses.filter(e => e.category === filterCat);
+    const totalAmt = filtered.reduce((s, e) => s + parseFloat(e.amount), 0);
+
+    const fmt = (v) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v || 0);
+
+    return (
+        <div className="management-page">
+            <h1>Expense Management</h1>
+
+            {message.text && (
+                <div style={{ padding: '1rem', borderRadius: '10px', marginBottom: '1.5rem', background: message.type === 'error' ? '#FFF5F5' : '#F0FFF4', color: message.type === 'error' ? '#C53030' : '#2C5F2D', border: `1px solid ${message.type === 'error' ? '#FED7D7' : '#C6F6D5'}`, fontWeight: 600 }}>
+                    {message.text}
+                </div>
+            )}
+
+            <div className="management-container">
+                <div className="form-section">
+                    <h2>Add Expense</h2>
+                    <form onSubmit={handleSubmit} className="management-form">
+                        <div className="form-group">
+                            <label>Trip (Optional)</label>
+                            <select value={formData.trip_id} onChange={e => setFormData({ ...formData, trip_id: e.target.value })}>
+                                <option value="">No specific trip</option>
+                                {trips.map(t => <option key={t.trip_id} value={t.trip_id}>{t.lr_number} — {t.source} → {t.destination}</option>)}
+                            </select>
+                        </div>
+                        <div className="form-group">
+                            <label>Truck (Optional)</label>
+                            <select value={formData.truck_id} onChange={e => setFormData({ ...formData, truck_id: e.target.value })}>
+                                <option value="">No specific truck</option>
+                                {trucks.map(t => <option key={t.truck_id} value={t.truck_id}>{t.truck_number}</option>)}
+                            </select>
+                        </div>
+                        <div className="form-group">
+                            <label>Category</label>
+                            <select value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })} required>
+                                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                        </div>
+                        <div className="form-group">
+                            <label>Amount (₹)</label>
+                            <input type="number" placeholder="5000" value={formData.amount} onChange={e => setFormData({ ...formData, amount: e.target.value })} required min="1" />
+                        </div>
+                        <div className="form-group">
+                            <label>Description</label>
+                            <input type="text" placeholder="Brief note" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} />
+                        </div>
+                        <button type="submit" className="btn-submit">Add Expense</button>
+                    </form>
+                </div>
+
+                <div className="list-section">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                        <h2 style={{ margin: 0 }}>Expense Ledger</h2>
+                        <div style={{ background: '#2C5F2D', color: 'white', padding: '0.4rem 1rem', borderRadius: '8px', fontWeight: 700 }}>
+                            Total: {fmt(totalAmt)}
+                        </div>
+                    </div>
+
+                    {/* Category Filters */}
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                        {['All', ...CATEGORIES].map(c => (
+                            <button key={c} onClick={() => setFilterCat(c)}
+                                style={{ padding: '0.35rem 0.7rem', borderRadius: '5px', border: '1px solid #e2e8f0', backgroundColor: filterCat === c ? '#2C5F2D' : 'white', color: filterCat === c ? 'white' : '#2d3748', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}>
+                                {c}
+                            </button>
+                        ))}
+                    </div>
+
+                    {loading ? <p>Loading...</p> : (
+                        <table className="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Category</th>
+                                    <th>Amount</th>
+                                    <th>Description</th>
+                                    <th>Trip</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filtered.map(exp => (
+                                    <tr key={exp.expense_id}>
+                                        <td>{new Date(exp.created_at).toLocaleDateString()}</td>
+                                        <td><span className="status-badge" style={{ background: '#EBF8FF', color: '#2B6CB0' }}>{exp.category}</span></td>
+                                        <td style={{ fontWeight: 600 }}>{fmt(exp.amount)}</td>
+                                        <td>{exp.description || '—'}</td>
+                                        <td>{exp.trip_id || '—'}</td>
+                                        <td>
+                                            <button onClick={() => handleDelete(exp.expense_id)} style={{ background: '#FFF5F5', color: '#C53030', border: '1px solid #FED7D7', borderRadius: '6px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem' }}>Delete</button>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {filtered.length === 0 && <tr><td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: '#718096' }}>No expenses found.</td></tr>}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+export default ExpenseManagement;
