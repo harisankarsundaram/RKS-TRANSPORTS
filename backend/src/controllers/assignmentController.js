@@ -1,5 +1,6 @@
 const DriverModel = require('../models/driverModel');
 const TruckModel = require('../models/truckModel');
+const TripModel = require('../models/tripModel');
 
 const AssignmentController = {
     // POST /api/assign-driver - Assign driver to truck
@@ -108,6 +109,15 @@ const AssignmentController = {
                 return res.status(400).json({
                     success: false,
                     message: 'Driver is not assigned to any truck'
+                });
+            }
+
+            // Check for active trips before unassigning
+            const activeTrip = await TripModel.getActiveTripByDriver(driver_id);
+            if (activeTrip) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Cannot unassign driver with an active trip (Trip #${activeTrip.trip_id} - ${activeTrip.status}). Complete or cancel the trip first.`
                 });
             }
 

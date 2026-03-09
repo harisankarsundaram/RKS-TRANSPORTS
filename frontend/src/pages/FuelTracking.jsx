@@ -20,15 +20,14 @@ function FuelTracking() {
         const init = async () => {
             if (user?.role === 'driver' && user?.id) {
                 try {
-                    const res = await apiClient.get(`/drivers/user/${user.id}`);
-                    if (res.data.success) setDriverId(res.data.data.driver_id);
-                } catch (e) { console.error(e); }
-            }
-            // Fetch active trips for the dropdown
-            if (user?.role === 'admin') {
-                try {
-                    const res = await apiClient.get('/trips?status=Running');
-                    if (res.data.success) setTrips(res.data.data);
+                    const driverRes = await apiClient.get(`/drivers/user/${user.id}`);
+                    if (driverRes.data.success) {
+                        const dId = driverRes.data.data.driver_id;
+                        setDriverId(dId);
+                        // Fetch driver's running trips for the fuel form
+                        const tripRes = await apiClient.get(`/trips?status=Running&driver_id=${dId}`);
+                        if (tripRes.data.success) setTrips(tripRes.data.data);
+                    }
                 } catch (e) { console.error(e); }
             }
         };
@@ -69,9 +68,11 @@ function FuelTracking() {
             showMsg('Fuel log added successfully!');
             setFormData({ trip_id: '', liters: '', price_per_liter: '' });
             fetchFuelLogs();
-            // Refresh trips in case more need to appear
-            const tripRes = await apiClient.get('/trips?status=Running');
-            if (tripRes.data.success) setTrips(tripRes.data.data);
+            // Refresh driver's running trips
+            if (driverId) {
+                const tripRes = await apiClient.get(`/trips?status=Running&driver_id=${driverId}`);
+                if (tripRes.data.success) setTrips(tripRes.data.data);
+            }
         } catch (err) {
             showMsg(err.response?.data?.message || 'Error adding fuel log', 'error');
         }
@@ -98,14 +99,14 @@ function FuelTracking() {
             </header>
 
             {message.text && (
-                <div style={{ padding: '1rem', borderRadius: '10px', marginBottom: '1.5rem', background: message.type === 'error' ? '#FFF5F5' : '#F0FFF4', color: message.type === 'error' ? '#C53030' : '#2C5F2D', border: `1px solid ${message.type === 'error' ? '#FED7D7' : '#C6F6D5'}`, fontWeight: 600 }}>
+                <div className={`alert-message ${message.type}`}>
                     {message.text}
                 </div>
             )}
 
             <div className="management-container">
-                {/* Add Fuel Form — Admin Only */}
-                {user?.role === 'admin' && (
+                {/* Add Fuel Form — Driver Only */}
+                {user?.role === 'driver' && (
                     <div className="form-section">
                         <h2>Log Fuel Entry</h2>
                         <form onSubmit={handleSubmit} className="management-form">
@@ -129,7 +130,7 @@ function FuelTracking() {
                                 <input type="number" step="0.01" placeholder="e.g. 92.50" value={formData.price_per_liter} onChange={e => setFormData({ ...formData, price_per_liter: e.target.value })} required min="0.1" />
                             </div>
                             {totalCost > 0 && (
-                                <div style={{ padding: '0.75rem', borderRadius: '8px', background: '#F0FFF4', color: '#2C5F2D', fontWeight: 700, textAlign: 'center', marginBottom: '0.5rem' }}>
+                                <div className="alert-message success">
                                     Total: ₹{totalCost.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                                 </div>
                             )}
@@ -139,7 +140,7 @@ function FuelTracking() {
                 )}
 
                 {/* Fuel Log Table */}
-                <div className="list-section" style={user?.role === 'driver' ? { gridColumn: 'span 2' } : {}}>
+                <div className="list-section" style={user?.role === 'admin' ? { gridColumn: 'span 2' } : {}}>
                     <h2>Fuel Logs</h2>
                     {loading ? <p>Loading fuel data...</p> : (
                         <table className="data-table">
@@ -165,12 +166,12 @@ function FuelTracking() {
                                         <td>₹{Number(log.total_cost).toLocaleString()}</td>
                                         {user?.role === 'admin' && (
                                             <td>
-                                                <button onClick={() => handleDelete(log.fuel_id)} style={{ background: '#FFF5F5', color: '#C53030', border: '1px solid #FED7D7', borderRadius: '6px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem' }}>Delete</button>
+                                        <button onClick={() => handleDelete(log.fuel_id)} className="btn-action danger">Delete</button>
                                             </td>
                                         )}
                                     </tr>
                                 ))}
-                                {fuelLogs.length === 0 && <tr><td colSpan={user?.role === 'admin' ? 7 : 6} style={{ textAlign: 'center', padding: '2rem', color: '#718096' }}>No fuel logs found.</td></tr>}
+                                {fuelLogs.length === 0 && <tr><td colSpan={user?.role === 'admin' ? 7 : 6} className="empty-state">No fuel logs found.</td></tr>}
                             </tbody>
                         </table>
                     )}

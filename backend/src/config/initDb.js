@@ -94,13 +94,9 @@ async function initDatabase() {
         const tripAlterColumns = [
             { name: 'base_freight', type: 'NUMERIC(12,2) DEFAULT 0' },
             { name: 'toll_amount', type: 'NUMERIC(12,2) DEFAULT 0' },
-            { name: 'toll_billable', type: 'BOOLEAN DEFAULT false' },
             { name: 'loading_cost', type: 'NUMERIC(12,2) DEFAULT 0' },
-            { name: 'loading_billable', type: 'BOOLEAN DEFAULT false' },
             { name: 'unloading_cost', type: 'NUMERIC(12,2) DEFAULT 0' },
-            { name: 'unloading_billable', type: 'BOOLEAN DEFAULT false' },
-            { name: 'other_charges', type: 'NUMERIC(12,2) DEFAULT 0' },
-            { name: 'other_billable', type: 'BOOLEAN DEFAULT false' },
+            { name: 'fast_tag', type: 'NUMERIC(12,2) DEFAULT 0' },
             { name: 'gst_percentage', type: 'NUMERIC(5,2) DEFAULT 0' },
             { name: 'driver_bata', type: 'NUMERIC(12,2) DEFAULT 0' },
             { name: 'empty_km', type: 'NUMERIC(10,2) DEFAULT 0' },
@@ -112,9 +108,70 @@ async function initDatabase() {
                 ALTER TABLE trips ADD COLUMN IF NOT EXISTS ${col.name} ${col.type}
             `);
         }
-        console.log('  ✔ trips table columns ensured (base_freight renamed)');
+        // Rename other_charges → fast_tag if needed
+        await client.query(`
+            DO $$ BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trips' AND column_name='other_charges') THEN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trips' AND column_name='fast_tag') THEN
+                        ALTER TABLE trips RENAME COLUMN other_charges TO fast_tag;
+                    ELSE
+                        ALTER TABLE trips DROP COLUMN other_charges;
+                    END IF;
+                END IF;
+            END $$;
+        `);
+
+        // Drop deprecated billable columns
+        const dropCols = ['toll_billable', 'loading_billable', 'unloading_billable', 'other_billable', 'fast_tag_billable'];
+        for (const col of dropCols) {
+            await client.query(`ALTER TABLE trips DROP COLUMN IF EXISTS ${col}`);
+        }
+
+        // Auto-sync distance_km = empty_km + loaded_km
+        await client.query(`
+            UPDATE trips SET distance_km = COALESCE(empty_km, 0) + COALESCE(loaded_km, 0)
+            WHERE distance_km IS DISTINCT FROM (COALESCE(empty_km, 0) + COALESCE(loaded_km, 0))
+        `);
+        console.log('  ✔ trips table columns ensured (billable columns removed, other_charges→fast_tag)');
 
         // ... (gps_logs, fuel_logs, maintenance tables) ...
+
+        // Create gps_logs table
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS gps_logs (
+                gps_id SERIAL PRIMARY KEY,
+                truck_id INTEGER REFERENCES trucks(truck_id),
+                trip_id INTEGER REFERENCES trips(trip_id) ON DELETE CASCADE,
+                latitude DECIMAL(10,7) NOT NULL,
+                longitude DECIMAL(10,7) NOT NULL,
+                recorded_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        // Create fuel_logs table
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS fuel_logs (
+                fuel_id SERIAL PRIMARY KEY,
+                trip_id INTEGER REFERENCES trips(trip_id) ON DELETE CASCADE,
+                liters DECIMAL(10,2) NOT NULL,
+                price_per_liter DECIMAL(10,2) NOT NULL,
+                total_cost DECIMAL(12,2) NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        // Create maintenance table
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS maintenance (
+                maintenance_id SERIAL PRIMARY KEY,
+                truck_id INTEGER REFERENCES trucks(truck_id),
+                service_date DATE NOT NULL,
+                description TEXT,
+                cost DECIMAL(12,2) NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        console.log('  ✔ gps_logs, fuel_logs, maintenance tables ensured');
 
         // ── Financial Enhancement: Create expenses table (UUID) ──
         await client.query('DROP TABLE IF EXISTS expenses CASCADE');
@@ -163,6 +220,22 @@ async function initDatabase() {
         await client.query('CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses(category)');
         await client.query('CREATE INDEX IF NOT EXISTS idx_invoices_trip_id ON invoices(trip_id)');
         await client.query('CREATE INDEX IF NOT EXISTS idx_invoices_payment_status ON invoices(payment_status)');
+
+        // Create notifications table
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS notifications (
+                notification_id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(user_id) ON DELETE CASCADE,
+                message TEXT NOT NULL,
+                type VARCHAR(50) NOT NULL,
+                is_read BOOLEAN DEFAULT FALSE,
+                related_trip_id INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+        await client.query('CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id)');
+        await client.query('CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at)');
+        console.log('  ✔ notifications table created');
 
         console.log('✅ PostgreSQL Database and tables initialized successfully');
         return true;

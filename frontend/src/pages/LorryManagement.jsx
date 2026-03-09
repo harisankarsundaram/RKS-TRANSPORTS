@@ -4,13 +4,17 @@ import './Management.css';
 
 function LorryManagement() {
     const [trucks, setTrucks] = useState([]);
+    const [trips, setTrips] = useState([]);
     const [formData, setFormData] = useState({
         truck_number: '', capacity: '', status: 'Available', insurance_expiry: '', fitness_expiry: ''
     });
     const [loading, setLoading] = useState(true);
     const [message, setMessage] = useState({ text: '', type: '' });
 
-    useEffect(() => { fetchTrucks(); }, []);
+    useEffect(() => {
+        fetchTrucks();
+        fetchActiveTrips();
+    }, []);
 
     async function fetchTrucks() {
         try {
@@ -18,6 +22,20 @@ function LorryManagement() {
             if (response.data.success) setTrucks(response.data.data);
         } catch (err) { console.error(err); }
         finally { setLoading(false); }
+    }
+
+    async function fetchActiveTrips() {
+        try {
+            const [planned, running] = await Promise.all([
+                apiClient.get('/trips?status=Planned'),
+                apiClient.get('/trips?status=Running')
+            ]);
+            const allActive = [
+                ...(planned.data.success ? planned.data.data : []),
+                ...(running.data.success ? running.data.data : [])
+            ];
+            setTrips(allActive);
+        } catch (err) { console.error(err); }
     }
 
     const showMsg = (text, type = 'success') => {
@@ -48,12 +66,27 @@ function LorryManagement() {
         }
     }
 
+    // Determine effective truck status considering active trips
+    const getTruckStatus = (truck) => {
+        if (truck.status === 'Assigned') {
+            const activeTrip = trips.find(t => t.truck_id === truck.truck_id);
+            if (activeTrip) {
+                return { label: activeTrip.status === 'Running' ? 'On Trip' : 'Trip Planned', className: 'on-trip' };
+            }
+            return { label: 'Assigned', className: 'assigned' };
+        }
+        if (truck.status === 'Maintenance') {
+            return { label: 'Maintenance', className: 'maintenance' };
+        }
+        return { label: 'Available', className: 'available' };
+    };
+
     return (
         <div className="management-page">
             <h1>Lorry Management</h1>
 
             {message.text && (
-                <div style={{ padding: '1rem', borderRadius: '10px', marginBottom: '1.5rem', background: message.type === 'error' ? '#FFF5F5' : '#F0FFF4', color: message.type === 'error' ? '#C53030' : '#2C5F2D', border: `1px solid ${message.type === 'error' ? '#FED7D7' : '#C6F6D5'}`, fontWeight: 600 }}>
+                <div className={`alert-message ${message.type}`}>
                     {message.text}
                 </div>
             )}
@@ -104,19 +137,22 @@ function LorryManagement() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {trucks.map(truck => (
-                                    <tr key={truck.truck_id}>
-                                        <td>{truck.truck_number}</td>
-                                        <td>{truck.capacity} T</td>
-                                        <td><span className={`status-badge ${truck.status.toLowerCase()}`}>{truck.status}</span></td>
-                                        <td>{new Date(truck.insurance_expiry).toLocaleDateString()}</td>
-                                        <td>{new Date(truck.fitness_expiry).toLocaleDateString()}</td>
-                                        <td>
-                                            <button onClick={() => handleDelete(truck.truck_id)} style={{ background: '#FFF5F5', color: '#C53030', border: '1px solid #FED7D7', borderRadius: '6px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem' }}>Delete</button>
-                                        </td>
-                                    </tr>
-                                ))}
-                                {trucks.length === 0 && <tr><td colSpan="6">No trucks found.</td></tr>}
+                                {trucks.map(truck => {
+                                    const status = getTruckStatus(truck);
+                                    return (
+                                        <tr key={truck.truck_id}>
+                                            <td>{truck.truck_number}</td>
+                                            <td>{truck.capacity} T</td>
+                                            <td><span className={`status-badge ${status.className}`}>{status.label}</span></td>
+                                            <td>{new Date(truck.insurance_expiry).toLocaleDateString()}</td>
+                                            <td>{new Date(truck.fitness_expiry).toLocaleDateString()}</td>
+                                            <td>
+                                                <button onClick={() => handleDelete(truck.truck_id)} className="btn-action danger">Delete</button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                                {trucks.length === 0 && <tr><td colSpan="6" className="empty-state">No trucks found.</td></tr>}
                             </tbody>
                         </table>
                     )}

@@ -12,6 +12,12 @@
     margin: 0 auto;
 }
 
+.management-page h1 {
+    font-size: 2rem;
+    color: #1a202c;
+    margin-bottom: 0.5rem;
+}
+
 .management-container {
     display: grid;
     grid-template-columns: 1fr 2fr;
@@ -56,7 +62,8 @@
 }
 
 .form-group input,
-.form-group select {
+.form-group select,
+.form-group textarea {
     width: 100%;
     padding: 0.8rem 1rem;
     border: 2px solid #e2e8f0;
@@ -64,10 +71,12 @@
     font-size: 1rem;
     background-color: #f8fafc;
     transition: all 0.2s;
+    font-family: inherit;
 }
 
 .form-group input:focus,
-.form-group select:focus {
+.form-group select:focus,
+.form-group textarea:focus {
     outline: none;
     border-color: var(--rks-green-light);
     background-color: white;
@@ -137,6 +146,10 @@
     border-bottom: none;
 }
 
+.data-table tr:hover {
+    background-color: #f7fafc;
+}
+
 /* Status Badges */
 .status-badge {
     padding: 0.35rem 0.75rem;
@@ -152,11 +165,16 @@
     border: 1px solid #C6F6D5;
 }
 
-.status-badge.assigned,
-.status-badge.intransit {
+.status-badge.assigned {
     background-color: #EBF8FF;
     color: #2B6CB0;
     border: 1px solid #BEE3F8;
+}
+
+.status-badge.on-trip {
+    background-color: #FFFBEB;
+    color: #92400E;
+    border: 1px solid #FDE68A;
 }
 
 .status-badge.maintenance {
@@ -165,10 +183,402 @@
     border: 1px solid #FED7D7;
 }
 
+/* Alert Messages */
+.alert-message {
+    padding: 1rem;
+    border-radius: 10px;
+    margin-bottom: 1.5rem;
+    font-weight: 600;
+}
+
+.alert-message.success {
+    background: #F0FFF4;
+    color: #2C5F2D;
+    border: 1px solid #C6F6D5;
+}
+
+.alert-message.error {
+    background: #FFF5F5;
+    color: #C53030;
+    border: 1px solid #FED7D7;
+}
+
+/* Action Buttons */
+.btn-action {
+    border-radius: 6px;
+    padding: 0.35rem 0.7rem;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.8rem;
+    border: 1px solid;
+    transition: all 0.15s;
+}
+
+.btn-action.danger {
+    background: #FFF5F5;
+    color: #C53030;
+    border-color: #FED7D7;
+}
+
+.btn-action.danger:hover {
+    background: #FED7D7;
+}
+
+.btn-action.primary {
+    background: #EBF8FF;
+    color: #2B6CB0;
+    border-color: #BEE3F8;
+}
+
+.btn-action.primary:hover {
+    background: #BEE3F8;
+}
+
+.btn-action.success {
+    background: #F0FFF4;
+    color: #2C5F2D;
+    border-color: #C6F6D5;
+}
+
+.btn-action.success:hover {
+    background: #C6F6D5;
+}
+
+.btn-action.warning {
+    background: #FFFBEB;
+    color: #92400E;
+    border-color: #FDE68A;
+}
+
+.btn-action.warning:hover {
+    background: #FDE68A;
+}
+
+/* Filter Buttons */
+.filter-bar {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.5rem;
+}
+
+.btn-filter {
+    padding: 0.45rem 0.9rem;
+    border-radius: 6px;
+    border: 1px solid #cbd5e0;
+    background: white;
+    color: #2d3748;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+}
+
+.btn-filter:hover:not(.active) {
+    background-color: #edf2f7;
+}
+
+.btn-filter.active {
+    background-color: var(--rks-green-dark);
+    color: white;
+    border-color: var(--rks-green-dark);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* KPI / Stat Cards */
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+/* Trip Cards */
+.trip-card {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.trip-card:hover {
+    transform: scale(1.02);
+    box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+}
+
+.trip-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.trip-card-body > div {
+    margin-bottom: 0.4rem;
+}
+
+.trip-card-financials {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px dashed #e2e8f0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.3rem;
+    font-size: 0.85rem;
+    color: #4a5568;
+}
+
+.trip-card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #edf2f7;
+}
+
+.trip-card-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+
+.trip-card-actions button {
+    flex: 1;
+    padding: 0.5rem;
+    border-radius: 6px;
+    border: none;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+
+.trip-card-actions button:hover {
+    opacity: 0.9;
+}
+
+.trip-card-actions .btn-start {
+    background-color: #4299e1;
+}
+
+.trip-card-actions .btn-cancel {
+    background-color: #e53e3e;
+}
+
+.trip-card-actions .btn-complete {
+    background-color: #48bb78;
+}
+
+/* Standalone action buttons */
+.btn-start {
+    background-color: #4299e1;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 0.6rem 1.2rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+
+.btn-start:hover { opacity: 0.9; }
+
+.btn-complete {
+    background-color: #48bb78;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 0.6rem 1.2rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+
+.btn-complete:hover { opacity: 0.9; }
+
+/* Grid layouts */
+.grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+}
+
+.grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+}
+
+.trip-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 1.5rem;
+}
+
+/* Section Headers */
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+/* Inline checkbox label */
+.checkbox-label {
+    font-size: 0.8rem;
+    margin-top: 0.3rem;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: auto;
+}
+
+/* Total badge */
+.total-badge {
+    background: var(--rks-green-dark);
+    color: white;
+    padding: 0.4rem 1rem;
+    border-radius: 8px;
+    font-weight: 700;
+}
+
+/* Assigned truck display */
+.assigned-truck {
+    font-weight: 600;
+    color: #2C5F2D;
+}
+
+/* Table action group */
+.action-group {
+    display: flex;
+    gap: 0.4rem;
+}
+
+/* Empty state */
+.empty-state {
+    text-align: center;
+    padding: 2rem;
+    color: #718096;
+}
+
+/* Payment inline form */
+.payment-form {
+    display: flex;
+    gap: 0.3rem;
+    align-items: center;
+}
+
+.payment-form input {
+    width: 80px;
+    padding: 0.3rem;
+    border-radius: 4px;
+    border: 1px solid #e2e8f0;
+    font-size: 0.85rem;
+}
+
+/* Sub-section title */
+.sub-title {
+    margin: 1.5rem 0 1rem;
+    color: #4a5568;
+    font-size: 1rem;
+}
+
+/* Form textarea */
+.form-textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    min-height: 80px;
+    font-family: inherit;
+    font-size: 0.9rem;
+}
+
+@media (max-width: 768px) {
+    .management-page {
+        padding: 1.5rem;
+    }
+
+    .grid-3 {
+        grid-template-columns: 1fr;
+    }
+
+    .grid-2 {
+        grid-template-columns: 1fr;
+    }
+
+    .trip-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 .error {
     color: #C53030;
     background: #FFF5F5;
     padding: 1rem;
     border-radius: 8px;
     margin-bottom: 1rem;
+}
+
+/* KPI card variants */
+.kpi-success {
+    border-left: 4px solid #48bb78;
+}
+.kpi-success .stat-value {
+    color: #2f855a;
+    font-size: 1.8rem;
+}
+
+.kpi-info {
+    border-left: 4px solid #4299e1;
+}
+.kpi-info .stat-value {
+    color: #2b6cb0;
+    font-size: 1.8rem;
+}
+
+.kpi-warning {
+    border-left: 4px solid #ed8936;
+}
+.kpi-warning .stat-value {
+    color: #c05621;
+    font-size: 1.8rem;
+}
+
+.kpi-danger {
+    border-left: 4px solid #e53e3e;
+}
+.kpi-danger .stat-value {
+    color: #c53030;
+    font-size: 1.8rem;
+}
+
+/* Text helpers */
+.text-success {
+    color: #2f855a;
+    font-weight: 600;
+}
+
+/* Payment status badges */
+.status-badge.pending {
+    background: #FFFAF0;
+    color: #C05621;
+    border-color: #FEEBC8;
+}
+
+.status-badge.partial {
+    background: #EBF8FF;
+    color: #2B6CB0;
+    border-color: #BEE3F8;
+}
+
+.status-badge.paid {
+    background: #F0FFF4;
+    color: #2F855A;
+    border-color: #C6F6D5;
 }

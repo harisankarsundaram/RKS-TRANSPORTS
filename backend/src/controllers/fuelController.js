@@ -1,5 +1,6 @@
 const FuelModel = require('../models/fuelModel');
 const TripModel = require('../models/tripModel');
+const DriverModel = require('../models/driverModel');
 
 const FuelController = {
     // POST /api/fuel
@@ -13,6 +14,17 @@ const FuelController = {
 
             const trip = await TripModel.getById(trip_id);
             if (!trip) return res.status(404).json({ success: false, message: 'Trip not found' });
+
+            // Drivers can only add fuel for their own running trips
+            if (req.user.role === 'driver') {
+                const driver = await DriverModel.getByUserId(req.user.id);
+                if (!driver || driver.driver_id !== trip.driver_id) {
+                    return res.status(403).json({ success: false, message: 'You can only add fuel for your own trips' });
+                }
+                if (trip.status !== 'Running') {
+                    return res.status(400).json({ success: false, message: 'Fuel can only be added for running trips' });
+                }
+            }
 
             const total_cost = parseFloat(liters) * parseFloat(price_per_liter);
 

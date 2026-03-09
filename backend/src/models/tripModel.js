@@ -6,45 +6,49 @@ const TripModel = {
         const {
             truck_id, driver_id, lr_number, source, destination,
             base_freight,
-            toll_amount, toll_billable,
-            loading_cost, loading_billable,
-            unloading_cost, unloading_billable,
-            other_charges, other_billable,
+            toll_amount,
+            loading_cost,
+            unloading_cost,
+            fast_tag,
             gst_percentage, driver_bata,
             empty_km, loaded_km
         } = tripData;
+
+        const emptyVal = parseFloat(empty_km) || 0;
+        const loadedVal = parseFloat(loaded_km) || 0;
+        const distance_km = emptyVal + loadedVal;
 
         const result = await pool.query(
             `INSERT INTO trips (
                 truck_id, driver_id, lr_number, source, destination,
                 base_freight,
-                toll_amount, toll_billable,
-                loading_cost, loading_billable,
-                unloading_cost, unloading_billable,
-                other_charges, other_billable,
+                toll_amount,
+                loading_cost,
+                unloading_cost,
+                fast_tag,
                 gst_percentage, driver_bata,
-                empty_km, loaded_km,
+                empty_km, loaded_km, distance_km,
                 status, created_at
             ) VALUES (
                 $1, $2, $3, $4, $5,
                 $6,
-                $7, $8,
-                $9, $10,
+                $7,
+                $8,
+                $9,
+                $10,
                 $11, $12,
-                $13, $14,
-                $15, $16,
-                $17, $18,
+                $13, $14, $15,
                 'Planned', NOW()
             ) RETURNING trip_id`,
             [
                 truck_id, driver_id, lr_number, source, destination,
                 base_freight || 0,
-                toll_amount || 0, toll_billable || false,
-                loading_cost || 0, loading_billable || false,
-                unloading_cost || 0, unloading_billable || false,
-                other_charges || 0, other_billable || false,
+                toll_amount || 0,
+                loading_cost || 0,
+                unloading_cost || 0,
+                fast_tag || 0,
                 gst_percentage || 0, driver_bata || 0,
-                empty_km || 0, loaded_km || 0
+                emptyVal, loadedVal, distance_km
             ]
         );
         return { trip_id: result.rows[0].trip_id, ...tripData, status: 'Planned' };
@@ -55,6 +59,15 @@ const TripModel = {
         const result = await pool.query(
             `SELECT * FROM trips WHERE truck_id = $1 AND status IN ('Planned', 'Running')`,
             [truckId]
+        );
+        return result.rows[0] || null;
+    },
+
+    // Check for existing active trip for driver
+    async getActiveTripByDriver(driverId) {
+        const result = await pool.query(
+            `SELECT * FROM trips WHERE driver_id = $1 AND status IN ('Planned', 'Running')`,
+            [driverId]
         );
         return result.rows[0] || null;
     },

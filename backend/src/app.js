@@ -10,7 +10,7 @@ const maintenanceRoutes = require('./routes/maintenanceRoutes');
 const invoiceRoutes = require('./routes/invoiceRoutes');
 const authRoutes = require('./routes/authRoutes');
 const expenseRoutes = require('./routes/expenseRoutes');
-
+const notificationRoutes = require('./routes/notificationRoutes');
 
 const errorHandler = require('./middleware/errorHandler');
 
@@ -39,6 +39,7 @@ app.use('/api/maintenance', maintenanceRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api', assignmentRoutes);
 app.use('/api/expenses', expenseRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // 404 handler
 app.use((req, res) => {

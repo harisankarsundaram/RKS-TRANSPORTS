@@ -100,7 +100,7 @@ const InvoiceModel = {
         const result = await pool.query(`
             SELECT 
                 COALESCE(SUM(total_amount), 0) as total_invoiced,
-                COALESCE(SUM(CASE WHEN payment_status IN ('Paid', 'Partial') THEN total_amount ELSE 0 END), 0) as total_revenue,
+                COALESCE(SUM(amount_paid), 0) as total_revenue,
                 COALESCE(SUM(CASE WHEN payment_status != 'Paid' THEN total_amount - amount_paid ELSE 0 END), 0) as total_outstanding,
                 COUNT(*) as total_invoices,
                 COUNT(CASE WHEN payment_status = 'Pending' THEN 1 END) as pending_count,

@@ -1,7 +1,9 @@
 const TripModel = require('../models/tripModel');
 const TruckModel = require('../models/truckModel');
+const DriverModel = require('../models/driverModel');
 const ExpenseModel = require('../models/expenseModel');
 const InvoiceModel = require('../models/invoiceModel');
+const NotificationModel = require('../models/notificationModel');
 const FinanceService = require('../services/financeService');
 
 // Helper for date validation
@@ -14,10 +16,10 @@ const TripController = {
             const {
                 truck_id, driver_id, lr_number, source, destination,
                 freight_amount, base_freight,
-                toll_amount, toll_billable,
-                loading_cost, loading_billable,
-                unloading_cost, unloading_billable,
-                other_charges, other_billable,
+                toll_amount,
+                loading_cost,
+                unloading_cost,
+                fast_tag,
                 gst_percentage, driver_bata,
                 empty_km, loaded_km
             } = req.body;
@@ -33,25 +35,41 @@ const TripController = {
                 return res.status(400).json({ success: false, message: 'base_freight (or freight_amount) is required and must be > 0' });
             }
 
-            // 2. Validate Truck/Driver Assignment
-            const assignedDriverId = await TruckModel.getAssignedDriver(truck_id);
-            if (parseInt(assignedDriverId) !== parseInt(driver_id)) {
-                return res.status(400).json({ success: false, message: 'This driver is not currently assigned to the selected truck' });
+            // 2. Validate truck is available
+            const truck = await TruckModel.getById(truck_id);
+            if (!truck) return res.status(404).json({ success: false, message: 'Truck not found' });
+            if (truck.status !== 'Available') {
+                return res.status(400).json({ success: false, message: `Truck ${truck.truck_number} is not available (current status: ${truck.status})` });
             }
 
-            // 3. Check for Active Trips
+            // 3. Validate driver is available
+            const driver = await DriverModel.getById(driver_id);
+            if (!driver) return res.status(404).json({ success: false, message: 'Driver not found' });
+            if (driver.status !== 'Available') {
+                return res.status(400).json({ success: false, message: `Driver ${driver.name} is not available (current status: ${driver.status})` });
+            }
+
+            // 4. Check for Active Trips
             const activeTrip = await TripModel.getActiveTripByTruck(truck_id);
             if (activeTrip) {
                 return res.status(409).json({ success: false, message: `Truck is already on an active trip (Trip ID: ${activeTrip.trip_id})` });
             }
+            const activeDriverTrip = await TripModel.getActiveTripByDriver(driver_id);
+            if (activeDriverTrip) {
+                return res.status(409).json({ success: false, message: `Driver already has an active trip (Trip ID: ${activeDriverTrip.trip_id})` });
+            }
 
-            // 4. Check Unique LR Number
+            // 5. Check Unique LR Number
             const existingLr = await TripModel.findByLRNumber(lr_number);
             if (existingLr) {
                 return res.status(409).json({ success: false, message: 'LR Number already exists' });
             }
 
-            // 5. Create Planned Trip with all financial fields
+            // 6. Auto-assign driver to truck
+            await DriverModel.assignTruck(driver_id, truck_id);
+            await TruckModel.updateStatus(truck_id, 'Assigned');
+
+            // 7. Create Planned Trip with all financial fields
             const trip = await TripModel.create({
                 truck_id,
                 driver_id,
@@ -60,15 +78,25 @@ const TripController = {
                 destination,
                 freight_amount: effectiveFreight,
                 base_freight: effectiveFreight,
-                toll_amount, toll_billable,
-                loading_cost, loading_billable,
-                unloading_cost, unloading_billable,
-                other_charges, other_billable,
+                toll_amount,
+                loading_cost,
+                unloading_cost,
+                fast_tag,
                 gst_percentage, driver_bata,
                 empty_km, loaded_km
             });
 
-            res.status(201).json({ success: true, message: 'Trip planned successfully', data: trip });
+            // 8. Notify the driver about the assigned trip
+            if (driver.user_id) {
+                await NotificationModel.create({
+                    user_id: driver.user_id,
+                    message: `Trip ${lr_number} assigned: ${source} → ${destination} (Freight: ₹${effectiveFreight})`,
+                    type: 'trip_assigned',
+                    related_trip_id: trip.trip_id
+                });
+            }
+
+            res.status(201).json({ success: true, message: 'Trip planned successfully. Driver and truck paired automatically.', data: trip });
 
         } catch (error) {
             next(error);
@@ -84,7 +112,30 @@ const TripController = {
             if (!trip) return res.status(404).json({ success: false, message: 'Trip not found' });
             if (trip.status !== 'Planned') return res.status(400).json({ success: false, message: `Cannot start trip with status '${trip.status}'` });
 
+            // If driver role, verify they own this trip
+            if (req.user.role === 'driver') {
+                const driver = await DriverModel.getByUserId(req.user.id);
+                if (!driver || driver.driver_id !== trip.driver_id) {
+                    return res.status(403).json({ success: false, message: 'You can only start your own trips' });
+                }
+            }
+
+            // Verify truck is not in maintenance
+            const truck = await TruckModel.getById(trip.truck_id);
+            if (!truck || truck.status === 'Maintenance') {
+                return res.status(400).json({ success: false, message: 'Truck is not available to start this trip' });
+            }
+
             await TripModel.start(id);
+
+            // Notify all admins that the driver started the trip
+            const driver = await DriverModel.getById(trip.driver_id);
+            await NotificationModel.createForRole('admin', {
+                message: `${driver?.name || 'Driver'} started Trip ${trip.lr_number} (${trip.source} → ${trip.destination})`,
+                type: 'trip_started',
+                related_trip_id: trip.trip_id
+            });
+
             res.json({ success: true, message: 'Trip started successfully. Status updated to Running.' });
         } catch (error) {
             next(error);
@@ -100,10 +151,26 @@ const TripController = {
             if (!trip) return res.status(404).json({ success: false, message: 'Trip not found' });
             if (trip.status !== 'Running') return res.status(400).json({ success: false, message: `Cannot end trip with status '${trip.status}'` });
 
-            await TripModel.end(id);
+            // If driver role, verify they own this trip
+            if (req.user.role === 'driver') {
+                const driver = await DriverModel.getByUserId(req.user.id);
+                if (!driver || driver.driver_id !== trip.driver_id) {
+                    return res.status(403).json({ success: false, message: 'You can only complete your own trips' });
+                }
+            }
 
-            const DriverModel = require('../models/driverModel');
+            // Complete trip and free up driver + truck
+            await TripModel.end(id);
             await DriverModel.unassignTruck(trip.driver_id);
+            await TruckModel.updateStatus(trip.truck_id, 'Available');
+
+            // Notify all admins that the driver completed the trip
+            const driver = await DriverModel.getById(trip.driver_id);
+            await NotificationModel.createForRole('admin', {
+                message: `${driver?.name || 'Driver'} completed Trip ${trip.lr_number} (${trip.source} → ${trip.destination})`,
+                type: 'trip_completed',
+                related_trip_id: trip.trip_id
+            });
 
             res.json({ success: true, message: 'Trip completed. Truck and Driver unassigned and marked Available.' });
         } catch (error) {
@@ -127,7 +194,22 @@ const TripController = {
                 return res.status(500).json({ success: false, message: 'Failed to cancel trip' });
             }
 
-            res.json({ success: true, message: 'Trip cancelled successfully' });
+            // Free driver and truck since trip is cancelled
+            await DriverModel.unassignTruck(trip.driver_id);
+            await TruckModel.updateStatus(trip.truck_id, 'Available');
+
+            // Notify the driver about cancellation
+            const driver = await DriverModel.getById(trip.driver_id);
+            if (driver?.user_id) {
+                await NotificationModel.create({
+                    user_id: driver.user_id,
+                    message: `Trip ${trip.lr_number} (${trip.source} → ${trip.destination}) has been cancelled`,
+                    type: 'trip_cancelled',
+                    related_trip_id: trip.trip_id
+                });
+            }
+
+            res.json({ success: true, message: 'Trip cancelled successfully. Driver and truck freed.' });
         } catch (error) {
             next(error);
         }

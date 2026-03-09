@@ -1,5 +1,6 @@
 const MaintenanceModel = require('../models/maintenanceModel');
 const TruckModel = require('../models/truckModel');
+const TripModel = require('../models/tripModel');
 
 const MaintenanceController = {
     // POST /api/maintenance
@@ -14,6 +15,15 @@ const MaintenanceController = {
             // check truck exists
             const truck = await TruckModel.getById(truck_id);
             if (!truck) return res.status(404).json({ success: false, message: 'Truck not found' });
+
+            // Check for active trips before allowing maintenance
+            const activeTrip = await TripModel.getActiveTripByTruck(truck_id);
+            if (activeTrip) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Cannot set truck to maintenance. It has an active trip (Trip #${activeTrip.trip_id} - ${activeTrip.status}). Complete or cancel the trip first.`
+                });
+            }
 
             // Create Log
             await MaintenanceModel.create({ truck_id, service_date, description, cost });

@@ -47,13 +47,21 @@ function MaintenanceManagement() {
             showMsg('Maintenance logged! Truck status updated to Maintenance.');
             setFormData({ truck_id: '', service_date: new Date().toISOString().split('T')[0], description: '', cost: '' });
             fetchMaintenanceLogs();
-            fetchTrucks(); // Refresh truck statuses if needed
+            fetchTrucks();
         } catch (err) {
             showMsg(err.response?.data?.message || 'Error logging maintenance', 'error');
         }
     }
 
     const fmt = (v) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v || 0);
+
+    const totalCost = maintenanceLogs.reduce((s, l) => s + parseFloat(l.cost || 0), 0);
+    const thisMonth = maintenanceLogs.filter(l => {
+        const d = new Date(l.service_date);
+        const now = new Date();
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    });
+    const thisMonthCost = thisMonth.reduce((s, l) => s + parseFloat(l.cost || 0), 0);
 
     return (
         <div className="management-page">
@@ -63,10 +71,26 @@ function MaintenanceManagement() {
             </header>
 
             {message.text && (
-                <div style={{ padding: '1rem', borderRadius: '10px', marginBottom: '1.5rem', background: message.type === 'error' ? '#FFF5F5' : '#F0FFF4', color: message.type === 'error' ? '#C53030' : '#2C5F2D', border: `1px solid ${message.type === 'error' ? '#FED7D7' : '#C6F6D5'}`, fontWeight: 600 }}>
+                <div className={`alert-message ${message.type}`}>
                     {message.text}
                 </div>
             )}
+
+            {/* Summary KPIs */}
+            <div className="kpi-grid">
+                <div className="stat-card kpi-danger">
+                    <div className="stat-value">{fmt(totalCost)}</div>
+                    <div className="stat-label">Total Maintenance Cost</div>
+                </div>
+                <div className="stat-card kpi-info">
+                    <div className="stat-value">{maintenanceLogs.length}</div>
+                    <div className="stat-label">Total Records</div>
+                </div>
+                <div className="stat-card kpi-warning">
+                    <div className="stat-value">{fmt(thisMonthCost)}</div>
+                    <div className="stat-label">This Month</div>
+                </div>
+            </div>
 
             <div className="management-container">
                 <div className="form-section">
@@ -89,7 +113,7 @@ function MaintenanceManagement() {
                         </div>
                         <div className="form-group">
                             <label>Description</label>
-                            <textarea placeholder="Oil change, tire rotation, etc." value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} required style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0', minHeight: '80px' }} />
+                            <textarea placeholder="Oil change, tire rotation, etc." value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} required className="form-textarea" />
                         </div>
                         <div className="form-group">
                             <label>Cost (₹)</label>
@@ -115,12 +139,12 @@ function MaintenanceManagement() {
                                 {maintenanceLogs.map(log => (
                                     <tr key={log.maintenance_id}>
                                         <td>{new Date(log.service_date).toLocaleDateString()}</td>
-                                        <td style={{ fontWeight: 600 }}>{log.truck_number}</td>
+                                        <td><strong>{log.truck_number}</strong></td>
                                         <td>{log.description}</td>
-                                        <td style={{ fontWeight: 600 }}>{fmt(log.cost)}</td>
+                                        <td><strong>{fmt(log.cost)}</strong></td>
                                     </tr>
                                 ))}
-                                {maintenanceLogs.length === 0 && <tr><td colSpan="4" style={{ textAlign: 'center', padding: '2rem', color: '#718096' }}>No maintenance records found.</td></tr>}
+                                {maintenanceLogs.length === 0 && <tr><td colSpan="4" className="empty-state">No maintenance records found.</td></tr>}
                             </tbody>
                         </table>
                     )}

@@ -1,4 +1,5 @@
 const DriverModel = require('../models/driverModel');
+const TripModel = require('../models/tripModel');
 const validators = require('../utils/validators');
 
 const DriverController = {
@@ -216,6 +217,15 @@ const DriverController = {
                 return res.status(400).json({
                     success: false,
                     message: 'Cannot delete driver that is assigned to a truck. Unassign the driver first.'
+                });
+            }
+
+            // Check for active trips
+            const activeTrip = await TripModel.getActiveTripByDriver(id);
+            if (activeTrip) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Cannot delete driver with an active trip (Trip #${activeTrip.trip_id} - ${activeTrip.status}). Complete or cancel the trip first.`
                 });
             }
 

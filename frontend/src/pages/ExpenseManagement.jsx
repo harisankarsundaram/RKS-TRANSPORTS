@@ -4,6 +4,16 @@ import './Management.css';
 
 const CATEGORIES = ['Fuel', 'Toll', 'Maintenance', 'Driver', 'RTO', 'Insurance', 'Misc'];
 
+const CATEGORY_COLORS = {
+    Fuel: { bg: '#FFF7ED', color: '#C2410C', border: '#FDBA74' },
+    Toll: { bg: '#EFF6FF', color: '#1D4ED8', border: '#93C5FD' },
+    Maintenance: { bg: '#FFF1F2', color: '#BE123C', border: '#FDA4AF' },
+    Driver: { bg: '#F0FDF4', color: '#15803D', border: '#86EFAC' },
+    RTO: { bg: '#FDF4FF', color: '#7E22CE', border: '#D8B4FE' },
+    Insurance: { bg: '#ECFEFF', color: '#0E7490', border: '#67E8F9' },
+    Misc: { bg: '#F8FAFC', color: '#475569', border: '#CBD5E1' },
+};
+
 function ExpenseManagement() {
     const [expenses, setExpenses] = useState([]);
     const [trips, setTrips] = useState([]);
@@ -76,6 +86,14 @@ function ExpenseManagement() {
 
     const filtered = filterCat === 'All' ? expenses : expenses.filter(e => e.category === filterCat);
     const totalAmt = filtered.reduce((s, e) => s + parseFloat(e.amount), 0);
+    const grandTotal = expenses.reduce((s, e) => s + parseFloat(e.amount), 0);
+
+    // Category breakdown
+    const catBreakdown = CATEGORIES.map(cat => ({
+        name: cat,
+        total: expenses.filter(e => e.category === cat).reduce((s, e) => s + parseFloat(e.amount), 0),
+        count: expenses.filter(e => e.category === cat).length,
+    })).filter(c => c.count > 0);
 
     const fmt = (v) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v || 0);
 
@@ -84,10 +102,28 @@ function ExpenseManagement() {
             <h1>Expense Management</h1>
 
             {message.text && (
-                <div style={{ padding: '1rem', borderRadius: '10px', marginBottom: '1.5rem', background: message.type === 'error' ? '#FFF5F5' : '#F0FFF4', color: message.type === 'error' ? '#C53030' : '#2C5F2D', border: `1px solid ${message.type === 'error' ? '#FED7D7' : '#C6F6D5'}`, fontWeight: 600 }}>
+                <div className={`alert-message ${message.type}`}>
                     {message.text}
                 </div>
             )}
+
+            {/* Summary KPI Cards */}
+            <div className="kpi-grid">
+                <div className="stat-card kpi-danger">
+                    <div className="stat-value">{fmt(grandTotal)}</div>
+                    <div className="stat-label">Total Expenses</div>
+                </div>
+                <div className="stat-card kpi-info">
+                    <div className="stat-value">{expenses.length}</div>
+                    <div className="stat-label">Total Entries</div>
+                </div>
+                {catBreakdown.slice(0, 3).map(cat => (
+                    <div key={cat.name} className="stat-card" style={{ borderLeft: `4px solid ${CATEGORY_COLORS[cat.name]?.border || '#CBD5E1'}` }}>
+                        <div className="stat-value" style={{ color: CATEGORY_COLORS[cat.name]?.color || '#475569' }}>{fmt(cat.total)}</div>
+                        <div className="stat-label">{cat.name} ({cat.count})</div>
+                    </div>
+                ))}
+            </div>
 
             <div className="management-container">
                 <div className="form-section">
@@ -126,18 +162,17 @@ function ExpenseManagement() {
                 </div>
 
                 <div className="list-section">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                        <h2 style={{ margin: 0 }}>Expense Ledger</h2>
-                        <div style={{ background: '#2C5F2D', color: 'white', padding: '0.4rem 1rem', borderRadius: '8px', fontWeight: 700 }}>
-                            Total: {fmt(totalAmt)}
+                    <div className="section-header">
+                        <h2>Expense Ledger</h2>
+                        <div className="total-badge">
+                            {filterCat !== 'All' ? `${filterCat}: ` : 'Total: '}{fmt(totalAmt)}
                         </div>
                     </div>
 
                     {/* Category Filters */}
-                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                    <div className="filter-bar">
                         {['All', ...CATEGORIES].map(c => (
-                            <button key={c} onClick={() => setFilterCat(c)}
-                                style={{ padding: '0.35rem 0.7rem', borderRadius: '5px', border: '1px solid #e2e8f0', backgroundColor: filterCat === c ? '#2C5F2D' : 'white', color: filterCat === c ? 'white' : '#2d3748', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}>
+                            <button key={c} onClick={() => setFilterCat(c)} className={`btn-filter ${filterCat === c ? 'active' : ''}`}>
                                 {c}
                             </button>
                         ))}
@@ -156,19 +191,22 @@ function ExpenseManagement() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {filtered.map(exp => (
-                                    <tr key={exp.expense_id}>
-                                        <td>{new Date(exp.created_at).toLocaleDateString()}</td>
-                                        <td><span className="status-badge" style={{ background: '#EBF8FF', color: '#2B6CB0' }}>{exp.category}</span></td>
-                                        <td style={{ fontWeight: 600 }}>{fmt(exp.amount)}</td>
-                                        <td>{exp.description || '—'}</td>
-                                        <td>{exp.trip_id || '—'}</td>
-                                        <td>
-                                            <button onClick={() => handleDelete(exp.expense_id)} style={{ background: '#FFF5F5', color: '#C53030', border: '1px solid #FED7D7', borderRadius: '6px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem' }}>Delete</button>
-                                        </td>
-                                    </tr>
-                                ))}
-                                {filtered.length === 0 && <tr><td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: '#718096' }}>No expenses found.</td></tr>}
+                                {filtered.map(exp => {
+                                    const cc = CATEGORY_COLORS[exp.category] || CATEGORY_COLORS.Misc;
+                                    return (
+                                        <tr key={exp.expense_id}>
+                                            <td>{new Date(exp.created_at).toLocaleDateString()}</td>
+                                            <td><span className={`status-badge ${exp.category.toLowerCase().replace(/\s+/g, '-')}`} style={{ background: cc.bg, color: cc.color, border: `1px solid ${cc.border}` }}>{exp.category}</span></td>
+                                            <td><strong>{fmt(exp.amount)}</strong></td>
+                                            <td>{exp.description || '—'}</td>
+                                            <td>{exp.lr_number || exp.trip_id || '—'}</td>
+                                            <td>
+                                                <button onClick={() => handleDelete(exp.expense_id)} className="btn-action danger">Delete</button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                                {filtered.length === 0 && <tr><td colSpan="6" className="empty-state">No expenses found.</td></tr>}
                             </tbody>
                         </table>
                     )}

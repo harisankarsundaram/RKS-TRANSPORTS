@@ -6,16 +6,16 @@
 const FinanceService = {
     /**
      * Calculate the billable total from trip financial fields.
-     * Only includes charges marked as billable.
+     * All charges are included in the invoice total.
      */
     calculateBillableTotal(trip) {
         const base = parseFloat(trip.base_freight) || 0;
-        const toll = trip.toll_billable ? (parseFloat(trip.toll_amount) || 0) : 0;
-        const loading = trip.loading_billable ? (parseFloat(trip.loading_cost) || 0) : 0;
-        const unloading = trip.unloading_billable ? (parseFloat(trip.unloading_cost) || 0) : 0;
-        const other = trip.other_billable ? (parseFloat(trip.other_charges) || 0) : 0;
+        const toll = parseFloat(trip.toll_amount) || 0;
+        const loading = parseFloat(trip.loading_cost) || 0;
+        const unloading = parseFloat(trip.unloading_cost) || 0;
+        const fastTag = parseFloat(trip.fast_tag) || 0;
 
-        return parseFloat((base + toll + loading + unloading + other).toFixed(2));
+        return parseFloat((base + toll + loading + unloading + fastTag).toFixed(2));
     },
 
     /**

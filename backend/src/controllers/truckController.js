@@ -1,4 +1,5 @@
 const TruckModel = require('../models/truckModel');
+const TripModel = require('../models/tripModel');
 const validators = require('../utils/validators');
 
 const TruckController = {
@@ -183,6 +184,15 @@ const TruckController = {
 
             // Handle status changes
             if (updateData.status) {
+                // Prevent status changes on trucks with active trips
+                const activeTrip = await TripModel.getActiveTripByTruck(id);
+                if (activeTrip && updateData.status !== truck.status) {
+                    return res.status(400).json({
+                        success: false,
+                        message: `Cannot change truck status. It has an active trip (Trip #${activeTrip.trip_id} - ${activeTrip.status}). Complete or cancel the trip first.`
+                    });
+                }
+
                 // If changing from Assigned to Available/Maintenance, unassign the driver
                 if (truck.status === 'Assigned' && updateData.status !== 'Assigned') {
                     const DriverModel = require('../models/driverModel');
@@ -191,14 +201,6 @@ const TruckController = {
                     if (driverId) {
                         await DriverModel.unassignTruck(driverId);
                     }
-                }
-
-                // If trying to set to Assigned manually without a driver (should be handled by Assignment API)
-                if (updateData.status === 'Assigned' && truck.status !== 'Assigned') {
-                    // We allow it but it's risky if not paired with driver assignment
-                    // Ideally, we should block this or ensure it's part of an assignment transaction
-                    // For now, let's allow it but maybe add a warning log
-                    console.warn(`Truck ${id} status set to Assigned manually`);
                 }
             }
 
