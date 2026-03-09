@@ -44,52 +44,231 @@ function AdminDashboard() {
     const ts = data?.truck_status || {};
     const ic = data?.invoice_counts || {};
 
-    // Compute bar chart max for monthly trends
-    const maxMonthlyRevenue = Math.max(...(data?.monthly_trips || []).map(m => parseFloat(m.revenue) || 0), 1);
-    const maxExpenseMonth = Math.max(...(data?.monthly_expenses || []).map(m => parseFloat(m.total) || 0), 1);
+    const dashboardDate = new Date().toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+    });
+
+    const collectionRate = data?.total_invoiced > 0
+        ? ((Number(data.total_revenue) / Number(data.total_invoiced)) * 100)
+        : 0;
+
+    const completionRate = tc.total > 0 ? ((tc.completed / tc.total) * 100) : 0;
+    const utilizationRate = ts.total > 0 ? (((ts.Assigned + ts.Maintenance) / ts.total) * 100) : 0;
+
+    const expenseByMonth = (data?.monthly_expenses || []).reduce((acc, m) => {
+        acc[m.month] = parseFloat(m.total) || 0;
+        return acc;
+    }, {});
+
+    const monthlyCombined = (data?.monthly_trips || []).map((m) => ({
+        month: m.month,
+        month_label: m.month_label,
+        revenue: parseFloat(m.revenue) || 0,
+        completed: Number(m.completed) || 0,
+        expenses: expenseByMonth[m.month] || 0
+    }));
+
+    const maxMonthRevenue = Math.max(...monthlyCombined.map(m => m.revenue), 1);
+    const maxMonthExpense = Math.max(...monthlyCombined.map(m => m.expenses), 1);
+
+    const alertItems = [
+        {
+            level: 'critical',
+            title: 'Pending Collections',
+            message: `${L || fmt(data?.total_outstanding)} is pending from customers`,
+            meta: `${L || ic.pending || 0} invoices pending`
+        },
+        {
+            level: 'warning',
+            title: 'Maintenance Queue',
+            message: `${L || ts.Maintenance || 0} trucks are under maintenance`,
+            meta: 'Track expected service completion'
+        },
+        {
+            level: 'info',
+            title: 'Active Operations',
+            message: `${L || tc.running || 0} trips are currently running`,
+            meta: 'Live GPS module will be integrated next'
+        },
+        {
+            level: 'neutral',
+            title: 'Route Reliability',
+            message: `${L || tc.completed || 0} trips completed successfully`,
+            meta: `${completionRate.toFixed(1)}% completion rate`
+        }
+    ];
 
     return (
         <>
-            <header className="dashboard-header">
-                <h1>Dashboard</h1>
-                <p>Welcome back, {user?.name}</p>
+            <header className="dashboard-header dashboard-header-premium">
+                <div>
+                    <h1>Dashboard Overview</h1>
+                    <p>Welcome back, {user?.name}. Here is your live operations intelligence.</p>
+                </div>
+                <div className="dashboard-date-chip">{dashboardDate}</div>
             </header>
 
-            {/* Financial KPIs — Top row */}
-            <section className="analytics-kpi-row">
-                <div className="analytics-kpi-card kpi-revenue">
-                    <div className="kpi-icon">&#8377;</div>
+            <section className="analytics-kpi-row analytics-kpi-row-premium">
+                <div className="analytics-kpi-card kpi-revenue premium-kpi-card">
+                    <div className="kpi-icon">&#128176;</div>
                     <div className="kpi-content">
                         <span className="kpi-value">{L || fmt(data?.total_revenue)}</span>
                         <span className="kpi-label">Total Revenue</span>
                     </div>
+                    <span className="kpi-trend kpi-trend-up">{collectionRate.toFixed(1)}% collected</span>
                 </div>
-                <div className="analytics-kpi-card kpi-outstanding">
+                <div className="analytics-kpi-card kpi-outstanding premium-kpi-card">
                     <div className="kpi-icon">&#9201;</div>
                     <div className="kpi-content">
                         <span className="kpi-value">{L || fmt(data?.total_outstanding)}</span>
                         <span className="kpi-label">Outstanding</span>
                     </div>
+                    <span className="kpi-trend kpi-trend-warn">{L || ic.pending || 0} pending</span>
                 </div>
-                <div className="analytics-kpi-card kpi-expenses">
-                    <div className="kpi-icon">&#9660;</div>
+                <div className="analytics-kpi-card kpi-expenses premium-kpi-card">
+                    <div className="kpi-icon">&#128201;</div>
                     <div className="kpi-content">
                         <span className="kpi-value">{L || fmt(data?.total_expenses)}</span>
                         <span className="kpi-label">Total Expenses</span>
                     </div>
+                    <span className="kpi-trend">{L || (data?.expense_categories?.length || 0)} categories</span>
                 </div>
-                <div className={`analytics-kpi-card ${(data?.net_profit || 0) >= 0 ? 'kpi-profit' : 'kpi-loss'}`}>
+                <div className={`analytics-kpi-card premium-kpi-card ${(data?.net_profit || 0) >= 0 ? 'kpi-profit' : 'kpi-loss'}`}>
                     <div className="kpi-icon">{(data?.net_profit || 0) >= 0 ? '&#9650;' : '&#9660;'}</div>
                     <div className="kpi-content">
                         <span className="kpi-value">{L || fmt(data?.net_profit)}</span>
                         <span className="kpi-label">Net Profit</span>
                     </div>
+                    <span className={`kpi-trend ${(data?.net_profit || 0) >= 0 ? 'kpi-trend-up' : 'kpi-trend-down'}`}>
+                        {(data?.total_revenue || 0) > 0 ? `${((data.net_profit / data.total_revenue) * 100).toFixed(1)}% margin` : 'No margin data'}
+                    </span>
                 </div>
             </section>
 
-            {/* Two-column grid: Fleet + Trip stats */}
+            <section className="premium-health-row">
+                <article className="health-pill">
+                    <span>Trip Completion</span>
+                    <strong>{completionRate.toFixed(1)}%</strong>
+                </article>
+                <article className="health-pill">
+                    <span>Fleet Utilization</span>
+                    <strong>{utilizationRate.toFixed(1)}%</strong>
+                </article>
+                <article className="health-pill">
+                    <span>Collection Efficiency</span>
+                    <strong>{collectionRate.toFixed(1)}%</strong>
+                </article>
+            </section>
+
+            <div className="premium-visual-grid">
+                <section className="analytics-card premium-map-panel">
+                    <div className="premium-panel-header">
+                        <h3 className="analytics-card-title">Live Fleet Tracking</h3>
+                        <span className="premium-badge">GPS module in progress</span>
+                    </div>
+                    <div className="map-canvas-shell" role="img" aria-label="Live fleet tracking placeholder visualization">
+                        <div className="map-grid-overlay" />
+                        <span className="map-pin pin-a" title="Truck A" />
+                        <span className="map-pin pin-b" title="Truck B" />
+                        <span className="map-pin pin-c" title="Truck C" />
+                        <div className="map-route route-a" />
+                        <div className="map-route route-b" />
+                        <div className="map-route route-c" />
+                        <div className="map-pulse" />
+                    </div>
+                    <div className="map-insight-row">
+                        <div className="map-insight-item"><span>Running Trips</span><strong>{L || tc.running || 0}</strong></div>
+                        <div className="map-insight-item"><span>Available Trucks</span><strong>{L || ts.Available || 0}</strong></div>
+                        <div className="map-insight-item"><span>Planned Trips</span><strong>{L || tc.planned || 0}</strong></div>
+                    </div>
+                </section>
+
+                <section className="analytics-card premium-alert-panel">
+                    <h3 className="analytics-card-title">Alerts & Notifications</h3>
+                    <div className="premium-alert-list">
+                        {alertItems.map((item, index) => (
+                            <article key={index} className={`premium-alert-item alert-${item.level}`}>
+                                <div>
+                                    <strong>{item.title}</strong>
+                                    <p>{item.message}</p>
+                                </div>
+                                <small>{item.meta}</small>
+                            </article>
+                        ))}
+                    </div>
+                </section>
+            </div>
+
+            <div className="premium-bottom-grid">
+                <section className="analytics-card premium-activity-table-card">
+                    <div className="premium-panel-header">
+                        <h3 className="analytics-card-title">Recent Activity Table</h3>
+                        <span className="premium-badge muted">Last 5 completed trips</span>
+                    </div>
+                    <div className="premium-table-wrap">
+                        <table className="data-table premium-table">
+                            <thead>
+                                <tr>
+                                    <th>Date & Time</th>
+                                    <th>Activity</th>
+                                    <th>Details</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {(data?.recent_completed || []).length > 0 ? (
+                                    data.recent_completed.map((trip) => (
+                                        <tr key={trip.trip_id}>
+                                            <td>{trip.end_time ? new Date(trip.end_time).toLocaleString() : '-'}</td>
+                                            <td>Trip Completed</td>
+                                            <td>{trip.lr_number} ({trip.source} → {trip.destination})</td>
+                                            <td><span className="status-chip status-ok">Confirmed</span></td>
+                                        </tr>
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <td colSpan="4" className="empty-state">No recent completed trips</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section className="analytics-card premium-revenue-card">
+                    <div className="premium-panel-header">
+                        <h3 className="analytics-card-title">Revenue vs Expenses</h3>
+                        <span className="premium-badge muted">Monthly trend</span>
+                    </div>
+                    {monthlyCombined.length > 0 ? (
+                        <div className="premium-trend-list">
+                            {monthlyCombined.map((m, idx) => (
+                                <div className="premium-trend-row" key={idx}>
+                                    <div className="trend-head">
+                                        <span>{m.month_label}</span>
+                                        <strong>{fmt(m.revenue)}</strong>
+                                    </div>
+                                    <div className="trend-bars">
+                                        <div className="trend-bar-track">
+                                            <div className="trend-bar-fill trend-revenue" style={{ width: `${(m.revenue / maxMonthRevenue) * 100}%` }} />
+                                        </div>
+                                        <div className="trend-bar-track">
+                                            <div className="trend-bar-fill trend-expense" style={{ width: `${(m.expenses / maxMonthExpense) * 100}%` }} />
+                                        </div>
+                                    </div>
+                                    <small>{m.completed} completed trips</small>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="analytics-empty">No monthly trend data yet</p>
+                    )}
+                </section>
+            </div>
+
             <div className="analytics-two-col">
-                {/* Fleet Status */}
                 <section className="analytics-card">
                     <h3 className="analytics-card-title">Fleet Status</h3>
                     <div className="fleet-status-grid">
@@ -132,7 +311,6 @@ function AdminDashboard() {
                     )}
                 </section>
 
-                {/* Trip breakdown */}
                 <section className="analytics-card">
                     <h3 className="analytics-card-title">Trip Overview</h3>
                     <div className="trip-breakdown-grid">
@@ -165,52 +343,7 @@ function AdminDashboard() {
                 </section>
             </div>
 
-            {/* Monthly Revenue Trend — simple bar chart */}
-            <div className="analytics-two-col">
-                <section className="analytics-card">
-                    <h3 className="analytics-card-title">Monthly Revenue</h3>
-                    {data?.monthly_trips?.length > 0 ? (
-                        <div className="bar-chart">
-                            {data.monthly_trips.map((m, i) => (
-                                <div key={i} className="bar-col">
-                                    <div className="bar-value">{fmt(m.revenue)}</div>
-                                    <div className="bar-track">
-                                        <div className="bar-fill bar-fill-green" style={{ height: `${(parseFloat(m.revenue) / maxMonthlyRevenue) * 100}%` }} />
-                                    </div>
-                                    <div className="bar-label">{m.month_label}</div>
-                                    <div className="bar-sub">{m.completed} trips</div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <p className="analytics-empty">No monthly data yet</p>
-                    )}
-                </section>
-
-                <section className="analytics-card">
-                    <h3 className="analytics-card-title">Monthly Expenses</h3>
-                    {data?.monthly_expenses?.length > 0 ? (
-                        <div className="bar-chart">
-                            {data.monthly_expenses.map((m, i) => (
-                                <div key={i} className="bar-col">
-                                    <div className="bar-value">{fmt(m.total)}</div>
-                                    <div className="bar-track">
-                                        <div className="bar-fill bar-fill-red" style={{ height: `${(parseFloat(m.total) / maxExpenseMonth) * 100}%` }} />
-                                    </div>
-                                    <div className="bar-label">{m.month_label}</div>
-                                    <div className="bar-sub">{m.entries} entries</div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <p className="analytics-empty">No expense data yet</p>
-                    )}
-                </section>
-            </div>
-
-            {/* Expense breakdown + Invoice status + Top Routes */}
             <div className="analytics-three-col">
-                {/* Expense Categories */}
                 <section className="analytics-card">
                     <h3 className="analytics-card-title">Expense Breakdown</h3>
                     {data?.expense_categories?.length > 0 ? (
@@ -237,7 +370,6 @@ function AdminDashboard() {
                     )}
                 </section>
 
-                {/* Invoice Status */}
                 <section className="analytics-card">
                     <h3 className="analytics-card-title">Invoice Status</h3>
                     <div className="invoice-status-grid">
@@ -264,7 +396,6 @@ function AdminDashboard() {
                     </div>
                 </section>
 
-                {/* Top Routes */}
                 <section className="analytics-card">
                     <h3 className="analytics-card-title">Top Routes</h3>
                     {data?.top_routes?.length > 0 ? (
@@ -285,7 +416,6 @@ function AdminDashboard() {
                 </section>
             </div>
 
-            {/* Recent Activity + Recent Completed */}
             <div className="analytics-two-col">
                 <section className="analytics-card">
                     <h3 className="analytics-card-title">Recent Activity</h3>
@@ -326,7 +456,6 @@ function AdminDashboard() {
                 </section>
             </div>
 
-            {/* Quick Actions */}
             <h3 className="analytics-section-title">Quick Actions</h3>
             <section className="action-grid">
                 <Link to="/lorries" className="action-card"><h3>Lorries &rarr;</h3><p>Manage trucks, status & fitness expiry</p></Link>
