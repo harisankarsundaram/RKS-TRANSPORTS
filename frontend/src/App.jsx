@@ -55,7 +55,7 @@ function App() {
         <Route element={<DashboardLayout role="driver" />}>
           <Route path="dashboard/driver" element={<DriverDashboard />} />
           <Route path="trips/history" element={<TripManagement />} />
-          <Route path="fuel" element={<FuelTracking />} />
+          <Route path="driver/fuel" element={<FuelTracking />} />
         </Route>
       </Route>
 

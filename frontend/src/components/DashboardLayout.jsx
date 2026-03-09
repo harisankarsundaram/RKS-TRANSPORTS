@@ -59,7 +59,7 @@ function DashboardLayout({ role }) {
                             <NavLink to="/dashboard/driver" end className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
                                 <span>My Dashboard</span>
                             </NavLink>
-                            <NavLink to="/fuel" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+                            <NavLink to="/driver/fuel" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
                                 <span>Fuel Tracking</span>
                             </NavLink>
                             <NavLink to="/trips/history" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
