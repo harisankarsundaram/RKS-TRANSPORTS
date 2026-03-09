@@ -4,14 +4,14 @@ import './Management.css';
 
 const CATEGORIES = ['Fuel', 'Toll', 'Maintenance', 'Driver', 'RTO', 'Insurance', 'Misc'];
 
-const CATEGORY_COLORS = {
-    Fuel: { bg: '#FFF7ED', color: '#C2410C', border: '#FDBA74' },
-    Toll: { bg: '#EFF6FF', color: '#1D4ED8', border: '#93C5FD' },
-    Maintenance: { bg: '#FFF1F2', color: '#BE123C', border: '#FDA4AF' },
-    Driver: { bg: '#F0FDF4', color: '#15803D', border: '#86EFAC' },
-    RTO: { bg: '#FDF4FF', color: '#7E22CE', border: '#D8B4FE' },
-    Insurance: { bg: '#ECFEFF', color: '#0E7490', border: '#67E8F9' },
-    Misc: { bg: '#F8FAFC', color: '#475569', border: '#CBD5E1' },
+const CATEGORY_TONES = {
+    Fuel: 'info',
+    Toll: 'info',
+    Maintenance: 'warning',
+    Driver: 'success',
+    RTO: 'info',
+    Insurance: 'warning',
+    Misc: 'neutral'
 };
 
 function ExpenseManagement() {
@@ -96,6 +96,7 @@ function ExpenseManagement() {
     })).filter(c => c.count > 0);
 
     const fmt = (v) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v || 0);
+    const toneFor = (category) => CATEGORY_TONES[category] || 'neutral';
 
     return (
         <div className="management-page">
@@ -118,8 +119,8 @@ function ExpenseManagement() {
                     <div className="stat-label">Total Entries</div>
                 </div>
                 {catBreakdown.slice(0, 3).map(cat => (
-                    <div key={cat.name} className="stat-card" style={{ borderLeft: `4px solid ${CATEGORY_COLORS[cat.name]?.border || '#CBD5E1'}` }}>
-                        <div className="stat-value" style={{ color: CATEGORY_COLORS[cat.name]?.color || '#475569' }}>{fmt(cat.total)}</div>
+                    <div key={cat.name} className={`stat-card category-kpi category-kpi-${toneFor(cat.name)}`}>
+                        <div className="stat-value">{fmt(cat.total)}</div>
                         <div className="stat-label">{cat.name} ({cat.count})</div>
                     </div>
                 ))}
@@ -192,11 +193,10 @@ function ExpenseManagement() {
                             </thead>
                             <tbody>
                                 {filtered.map(exp => {
-                                    const cc = CATEGORY_COLORS[exp.category] || CATEGORY_COLORS.Misc;
                                     return (
                                         <tr key={exp.expense_id}>
                                             <td>{new Date(exp.created_at).toLocaleDateString()}</td>
-                                            <td><span className={`status-badge ${exp.category.toLowerCase().replace(/\s+/g, '-')}`} style={{ background: cc.bg, color: cc.color, border: `1px solid ${cc.border}` }}>{exp.category}</span></td>
+                                            <td><span className={`status-badge tone-${toneFor(exp.category)}`}>{exp.category}</span></td>
                                             <td><strong>{fmt(exp.amount)}</strong></td>
                                             <td>{exp.description || '—'}</td>
                                             <td>{exp.lr_number || exp.trip_id || '—'}</td>
