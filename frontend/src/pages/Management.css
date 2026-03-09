@@ -231,13 +231,13 @@
 }
 
 .btn-action.danger {
-    background: #FEF2F2;
-    color: #991B1B;
-    border-color: #FECACA;
+    background: #EFF6FF;
+    color: #1E40AF;
+    border-color: #BFDBFE;
 }
 
 .btn-action.danger:hover {
-    background: #FECACA;
+    background: #DBEAFE;
 }
 
 .btn-action.primary {
@@ -251,23 +251,23 @@
 }
 
 .btn-action.success {
-    background: #ECFDF5;
-    color: #065F46;
-    border-color: #A7F3D0;
+    background: #EAF2FF;
+    color: #1D4ED8;
+    border-color: #BFDBFE;
 }
 
 .btn-action.success:hover {
-    background: #A7F3D0;
+    background: #DBEAFE;
 }
 
 .btn-action.warning {
-    background: #FFFBEB;
-    color: #92400E;
-    border-color: #FDE68A;
+    background: #F1F5F9;
+    color: #334155;
+    border-color: #CBD5E1;
 }
 
 .btn-action.warning:hover {
-    background: #FDE68A;
+    background: #E2E8F0;
 }
 
 /* Filter Buttons */
@@ -380,20 +380,20 @@
 }
 
 .trip-card-actions .btn-start {
-    background-color: #3B82F6;
+    background-color: #1D4ED8;
 }
 
 .trip-card-actions .btn-cancel {
-    background-color: #EF4444;
+    background-color: #334155;
 }
 
 .trip-card-actions .btn-complete {
-    background-color: #10B981;
+    background-color: #2563EB;
 }
 
 /* Standalone action buttons */
 .btn-start {
-    background-color: #3B82F6;
+    background-color: #1D4ED8;
     color: white;
     border: none;
     border-radius: var(--radius-sm);
@@ -406,7 +406,7 @@
 .btn-start:hover { opacity: 0.9; transform: translateY(-1px); }
 
 .btn-complete {
-    background-color: #10B981;
+    background-color: #2563EB;
     color: white;
     border: none;
     border-radius: var(--radius-sm);
