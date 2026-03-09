@@ -13,6 +13,27 @@
   --primary-50: #EAF2FF;
   --primary-100: #DBE8FF;
 
+  /* Semantic visualization colors */
+  --viz-info: #1D4ED8;
+  --viz-info-soft: #EFF6FF;
+  --viz-info-border: #BFDBFE;
+
+  --viz-success: #15803D;
+  --viz-success-soft: #F0FDF4;
+  --viz-success-border: #BBF7D0;
+
+  --viz-warning: #B45309;
+  --viz-warning-soft: #FFFBEB;
+  --viz-warning-border: #FDE68A;
+
+  --viz-danger: #B91C1C;
+  --viz-danger-soft: #FEF2F2;
+  --viz-danger-border: #FECACA;
+
+  --viz-neutral: #475569;
+  --viz-neutral-soft: #F8FAFC;
+  --viz-neutral-border: #CBD5E1;
+
   /* Accent: Same family for consistency */
   --accent: #2563EB;
   --accent-light: #60A5FA;
