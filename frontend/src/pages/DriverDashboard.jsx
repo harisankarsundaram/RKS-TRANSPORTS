@@ -39,6 +39,17 @@ function KpiSvg({ kind }) {
         );
     }
 
+    if (kind === 'average') {
+        return (
+            <svg {...common} aria-hidden="true">
+                <path d="M4 17h16" />
+                <path d="M6 14 10 10l3 3 5-6" />
+                <circle cx="10" cy="10" r="1" fill="currentColor" stroke="none" />
+                <circle cx="13" cy="13" r="1" fill="currentColor" stroke="none" />
+            </svg>
+        );
+    }
+
     return (
         <svg {...common} aria-hidden="true">
             <rect x="3" y="5" width="18" height="14" rx="2" />
@@ -107,6 +118,12 @@ function DriverDashboard() {
         setTimeout(() => setMessage({ text: '', type: '' }), 4000);
     };
 
+    const getTripDistance = (trip) => {
+        const explicit = parseFloat(trip?.distance_km || 0);
+        const computed = parseFloat(trip?.empty_km || 0) + parseFloat(trip?.loaded_km || 0);
+        return explicit || computed || 0;
+    };
+
     const handleTripAction = async (tripId, action) => {
         try {
             await apiClient.post(`/trips/${tripId}/${action}`);
@@ -146,6 +163,9 @@ function DriverDashboard() {
     if (!driverData) return <div style={{ padding: '2rem', textAlign: 'center' }}>Driver profile not found. Please contact admin.</div>;
 
     const unreadCount = notifications.filter(n => !n.is_read).length;
+    const averageDistance = driverStats?.completed_trips
+        ? Math.round((driverStats.total_distance || 0) / driverStats.completed_trips)
+        : 0;
 
     return (
         <>
@@ -182,10 +202,10 @@ function DriverDashboard() {
                     </div>
                 </div>
                 <div className="analytics-kpi-card kpi-expenses">
-                    <div className="kpi-icon"><KpiSvg kind="freight" /></div>
+                    <div className="kpi-icon"><KpiSvg kind="average" /></div>
                     <div className="kpi-content">
-                        <span className="kpi-value">{driverStats ? fmt(driverStats.total_revenue) : fmt(0)}</span>
-                        <span className="kpi-label">Freight Hauled</span>
+                        <span className="kpi-value">{num(averageDistance)} km</span>
+                        <span className="kpi-label">Avg Trip Distance</span>
                     </div>
                 </div>
             </section>
@@ -223,7 +243,7 @@ function DriverDashboard() {
                         <div className="driver-trip-active">
                             <div className="trip-active-header">
                                 <strong>{currentTrip.lr_number}</strong>
-                                <span className="status-badge" style={{ background: '#DBEAFE', color: '#1E40AF', border: '1px solid #93C5FD' }}>Running</span>
+                                <span className="status-badge running">Running</span>
                             </div>
                             <div className="trip-active-route">
                                 <div className="route-point">
@@ -238,7 +258,7 @@ function DriverDashboard() {
                                     <span className="route-dot route-dot-end" />
                                     <div>
                                         <strong>{currentTrip.destination}</strong>
-                                        <small>Freight: {fmt(currentTrip.base_freight)}</small>
+                                        <small>{num(getTripDistance(currentTrip))} km route</small>
                                     </div>
                                 </div>
                             </div>
@@ -250,7 +270,7 @@ function DriverDashboard() {
                         <div className="driver-trip-active">
                             <div className="trip-active-header">
                                 <strong>{plannedTrip.lr_number}</strong>
-                                <span className="status-badge" style={{ background: '#F1F5F9', color: '#334155', border: '1px solid #CBD5E1' }}>Planned</span>
+                                <span className="status-badge planned">Planned</span>
                             </div>
                             <div className="trip-active-route">
                                 <div className="route-point">
@@ -262,7 +282,7 @@ function DriverDashboard() {
                                     <span className="route-dot route-dot-end" />
                                     <div>
                                         <strong>{plannedTrip.destination}</strong>
-                                        <small>Freight: {fmt(plannedTrip.base_freight)}</small>
+                                        <small>{num(getTripDistance(plannedTrip))} km route</small>
                                     </div>
                                 </div>
                             </div>
