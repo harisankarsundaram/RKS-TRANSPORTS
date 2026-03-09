@@ -250,7 +250,7 @@ function DriverDashboard() {
                         <div className="driver-trip-active">
                             <div className="trip-active-header">
                                 <strong>{plannedTrip.lr_number}</strong>
-                                <span className="status-badge" style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D' }}>Planned</span>
+                                <span className="status-badge" style={{ background: '#F1F5F9', color: '#334155', border: '1px solid #CBD5E1' }}>Planned</span>
                             </div>
                             <div className="trip-active-route">
                                 <div className="route-point">
