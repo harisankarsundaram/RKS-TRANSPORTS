@@ -9,6 +9,7 @@ function DriverDashboard() {
     const [currentTrip, setCurrentTrip] = useState(null);
     const [plannedTrip, setPlannedTrip] = useState(null);
     const [tripHistory, setTripHistory] = useState([]);
+    const [driverStats, setDriverStats] = useState(null);
     const [notifications, setNotifications] = useState([]);
     const [loading, setLoading] = useState(true);
     const [message, setMessage] = useState({ text: '', type: '' });
@@ -24,12 +25,20 @@ function DriverDashboard() {
                 const driver = profileRes.data.data;
                 setDriverData(driver);
 
-                const tripsRes = await apiClient.get(`/trips?driver_id=${driver.driver_id}`);
+                const [tripsRes, historyRes] = await Promise.all([
+                    apiClient.get(`/trips?driver_id=${driver.driver_id}`),
+                    apiClient.get(`/trips/driver/${driver.driver_id}/history`)
+                ]);
+
                 if (tripsRes.data.success) {
                     const allTrips = tripsRes.data.data;
                     setCurrentTrip(allTrips.find(t => t.status === 'Running') || null);
                     setPlannedTrip(allTrips.find(t => t.status === 'Planned') || null);
                     setTripHistory(allTrips.filter(t => t.status === 'Completed').slice(0, 5));
+                }
+
+                if (historyRes.data.success) {
+                    setDriverStats(historyRes.data.data.statistics || null);
                 }
             }
 
@@ -44,7 +53,8 @@ function DriverDashboard() {
 
     useEffect(() => { fetchDashboard(); }, [user]);
 
-    const formatCurrency = (value) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
+    const fmt = (v) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v || 0);
+    const num = (v) => new Intl.NumberFormat('en-IN').format(v || 0);
 
     const showMsg = (text, type = 'success') => {
         setMessage({ text, type });
@@ -102,181 +112,193 @@ function DriverDashboard() {
                 <div className={`alert-message ${message.type}`}>{message.text}</div>
             )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
+            {/* Performance KPIs */}
+            <section className="analytics-kpi-row">
+                <div className="analytics-kpi-card kpi-revenue">
+                    <div className="kpi-icon">&#128666;</div>
+                    <div className="kpi-content">
+                        <span className="kpi-value">{driverStats ? driverStats.total_trips : 0}</span>
+                        <span className="kpi-label">Total Trips</span>
+                    </div>
+                </div>
+                <div className="analytics-kpi-card kpi-profit">
+                    <div className="kpi-icon">&#9989;</div>
+                    <div className="kpi-content">
+                        <span className="kpi-value">{driverStats ? driverStats.completed_trips : 0}</span>
+                        <span className="kpi-label">Completed</span>
+                    </div>
+                </div>
+                <div className="analytics-kpi-card kpi-outstanding">
+                    <div className="kpi-icon">&#128736;</div>
+                    <div className="kpi-content">
+                        <span className="kpi-value">{driverStats ? `${num(driverStats.total_distance)} km` : '0 km'}</span>
+                        <span className="kpi-label">Total Distance</span>
+                    </div>
+                </div>
+                <div className="analytics-kpi-card kpi-expenses">
+                    <div className="kpi-icon">&#8377;</div>
+                    <div className="kpi-content">
+                        <span className="kpi-value">{driverStats ? fmt(driverStats.total_revenue) : fmt(0)}</span>
+                        <span className="kpi-label">Freight Hauled</span>
+                    </div>
+                </div>
+            </section>
 
+            <div className="analytics-two-col">
                 {/* Profile Card */}
-                <section className="stat-card">
-                    <h3 style={{ borderBottom: '1px solid #eee', paddingBottom: '0.5rem', marginBottom: '1rem', color: '#2C5F2D' }}>MY PROFILE</h3>
-                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                        <div style={{ width: '50px', height: '50px', borderRadius: '50%', background: '#97BC62', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold', fontSize: '1.3rem' }}>
-                            {user?.name?.charAt(0)}
-                        </div>
-                        <div>
+                <section className="analytics-card">
+                    <h3 className="analytics-card-title">My Profile</h3>
+                    <div className="driver-profile-row">
+                        <div className="driver-avatar">{user?.name?.charAt(0)}</div>
+                        <div className="driver-profile-info">
                             <strong>{user?.name}</strong>
-                            <p style={{ margin: '0.2rem 0', color: '#718096', fontSize: '0.85rem' }}>{driverData.license_number}</p>
-                            <p style={{ margin: 0, color: '#718096', fontSize: '0.85rem' }}>{driverData.phone}</p>
+                            <span>{driverData.license_number}</span>
+                            <span>{driverData.phone}</span>
                         </div>
                     </div>
-                </section>
-
-                {/* Assigned Truck Card */}
-                <section className="stat-card">
-                    <h3 style={{ borderBottom: '1px solid #eee', paddingBottom: '0.5rem', marginBottom: '1rem', color: '#2C5F2D' }}>ASSIGNED VEHICLE</h3>
-                    {driverData.truck_number ? (
-                        <>
-                            <div style={{ textAlign: 'center' }}>
-                                <h2 style={{ fontSize: '1.8rem', color: '#2C5F2D', margin: '0.5rem 0' }}>{driverData.truck_number}</h2>
-                                <span style={{ color: '#718096' }}>{driverData.truck_capacity ? `${driverData.truck_capacity} Tons` : ''}</span>
-                            </div>
-                        </>
-                    ) : (
-                        <p style={{ textAlign: 'center', color: '#718096' }}>No truck assigned currently</p>
+                    {driverData.truck_number && (
+                        <div className="driver-vehicle-badge">
+                            <span className="vehicle-label">Assigned Vehicle</span>
+                            <span className="vehicle-number">{driverData.truck_number}</span>
+                            {driverData.truck_capacity && <span className="vehicle-cap">{driverData.truck_capacity} Tons</span>}
+                        </div>
+                    )}
+                    {!driverData.truck_number && (
+                        <div className="driver-vehicle-badge" style={{ opacity: 0.5 }}>
+                            <span className="vehicle-label">No truck assigned</span>
+                        </div>
                     )}
                 </section>
 
-                {/* Current Running Trip */}
-                <section className="stat-card" style={{ gridColumn: 'span 2', borderLeft: '4px solid #4299e1' }}>
-                    <h3 style={{ borderBottom: '1px solid #eee', paddingBottom: '0.5rem', marginBottom: '1rem', color: '#2C5F2D' }}>CURRENT TRIP</h3>
+                {/* Current / Planned Trip */}
+                <section className="analytics-card">
+                    <h3 className="analytics-card-title">{currentTrip ? 'Current Trip' : plannedTrip ? 'Planned Trip' : 'Trip Status'}</h3>
                     {currentTrip ? (
-                        <>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div>
-                                    <strong style={{ fontSize: '1.1rem' }}>{currentTrip.lr_number}</strong>
-                                    <p style={{ margin: '0.3rem 0', color: '#718096' }}>{currentTrip.truck_number}</p>
-                                </div>
-                                <span className="status-badge running" style={{ background: '#bee3f8', color: '#2b6cb0' }}>Running</span>
+                        <div className="driver-trip-active">
+                            <div className="trip-active-header">
+                                <strong>{currentTrip.lr_number}</strong>
+                                <span className="status-badge" style={{ background: '#DBEAFE', color: '#1E40AF', border: '1px solid #93C5FD' }}>Running</span>
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', margin: '1rem 0' }}>
-                                <div style={{ flex: 1 }}>
-                                    <strong>{currentTrip.source}</strong>
-                                    <br /><small style={{ color: '#718096' }}>{currentTrip.start_time ? new Date(currentTrip.start_time).toLocaleDateString() : ''}</small>
+                            <div className="trip-active-route">
+                                <div className="route-point">
+                                    <span className="route-dot route-dot-start" />
+                                    <div>
+                                        <strong>{currentTrip.source}</strong>
+                                        <small>{currentTrip.start_time ? new Date(currentTrip.start_time).toLocaleDateString() : ''}</small>
+                                    </div>
                                 </div>
-                                <div style={{ fontSize: '1.3rem', color: '#cbd5e0' }}>&rarr;</div>
-                                <div style={{ flex: 1, textAlign: 'right' }}>
-                                    <strong>{currentTrip.destination}</strong>
-                                    <br /><small style={{ color: '#718096' }}>Freight: {formatCurrency(currentTrip.base_freight)}</small>
+                                <div className="route-line" />
+                                <div className="route-point">
+                                    <span className="route-dot route-dot-end" />
+                                    <div>
+                                        <strong>{currentTrip.destination}</strong>
+                                        <small>Freight: {fmt(currentTrip.base_freight)}</small>
+                                    </div>
                                 </div>
                             </div>
-                            <button onClick={() => handleTripAction(currentTrip.trip_id, 'end')} className="btn-complete" style={{ width: '100%', padding: '0.75rem', fontSize: '1rem' }}>
+                            <button onClick={() => handleTripAction(currentTrip.trip_id, 'end')} className="btn-complete" style={{ width: '100%', marginTop: '1rem' }}>
                                 Complete Trip
                             </button>
-                        </>
+                        </div>
                     ) : plannedTrip ? (
-                        <>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div>
-                                    <strong style={{ fontSize: '1.1rem' }}>{plannedTrip.lr_number}</strong>
-                                    <p style={{ margin: '0.3rem 0', color: '#718096' }}>{plannedTrip.truck_number}</p>
-                                </div>
-                                <span className="status-badge planned" style={{ background: '#feebc8', color: '#c05621' }}>Planned</span>
+                        <div className="driver-trip-active">
+                            <div className="trip-active-header">
+                                <strong>{plannedTrip.lr_number}</strong>
+                                <span className="status-badge" style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D' }}>Planned</span>
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', margin: '1rem 0' }}>
-                                <div style={{ flex: 1 }}>
-                                    <strong>{plannedTrip.source}</strong>
+                            <div className="trip-active-route">
+                                <div className="route-point">
+                                    <span className="route-dot route-dot-start" />
+                                    <div><strong>{plannedTrip.source}</strong></div>
                                 </div>
-                                <div style={{ fontSize: '1.3rem', color: '#cbd5e0' }}>&rarr;</div>
-                                <div style={{ flex: 1, textAlign: 'right' }}>
-                                    <strong>{plannedTrip.destination}</strong>
-                                    <br /><small style={{ color: '#718096' }}>Freight: {formatCurrency(plannedTrip.base_freight)}</small>
+                                <div className="route-line" />
+                                <div className="route-point">
+                                    <span className="route-dot route-dot-end" />
+                                    <div>
+                                        <strong>{plannedTrip.destination}</strong>
+                                        <small>Freight: {fmt(plannedTrip.base_freight)}</small>
+                                    </div>
                                 </div>
                             </div>
-                            <button onClick={() => handleTripAction(plannedTrip.trip_id, 'start')} className="btn-start" style={{ width: '100%', padding: '0.75rem', fontSize: '1rem' }}>
+                            <button onClick={() => handleTripAction(plannedTrip.trip_id, 'start')} className="btn-start" style={{ width: '100%', marginTop: '1rem' }}>
                                 Start Trip
                             </button>
-                        </>
+                        </div>
                     ) : (
-                        <div style={{ textAlign: 'center', padding: '1.5rem', color: '#718096' }}>
-                            <p>No active or planned trips. Contact admin for new assignments.</p>
+                        <div className="analytics-empty" style={{ padding: '2rem' }}>
+                            No active or planned trips. Contact admin for new assignments.
                         </div>
                     )}
                 </section>
             </div>
 
-            {/* Fuel Logging — only when running trip exists */}
+            {/* Fuel Logging */}
             {currentTrip && (
-                <div style={{ marginTop: '1.5rem' }}>
-                    <section className="stat-card" style={{ borderLeft: '4px solid #ed8936' }}>
-                        <h3 style={{ borderBottom: '1px solid #eee', paddingBottom: '0.5rem', marginBottom: '1rem', color: '#2C5F2D' }}>LOG FUEL</h3>
-                        <p style={{ color: '#718096', fontSize: '0.85rem', marginBottom: '1rem' }}>
-                            Trip: <strong>{currentTrip.lr_number}</strong> — {currentTrip.source} → {currentTrip.destination}
-                        </p>
-                        <form onSubmit={handleFuelSubmit} style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                            <div className="form-group" style={{ flex: 1, minWidth: '120px', marginBottom: 0 }}>
-                                <label>Liters</label>
-                                <input type="number" step="0.01" min="0.01" required
-                                    value={fuelForm.liters}
-                                    onChange={e => setFuelForm({ ...fuelForm, liters: e.target.value })}
-                                    placeholder="e.g. 50" />
-                            </div>
-                            <div className="form-group" style={{ flex: 1, minWidth: '120px', marginBottom: 0 }}>
-                                <label>Price/Liter (₹)</label>
-                                <input type="number" step="0.01" min="0.01" required
-                                    value={fuelForm.price_per_liter}
-                                    onChange={e => setFuelForm({ ...fuelForm, price_per_liter: e.target.value })}
-                                    placeholder="e.g. 95" />
-                            </div>
-                            <div style={{ flex: 1, minWidth: '120px' }}>
-                                <div style={{ color: '#718096', fontSize: '0.85rem', marginBottom: '0.3rem' }}>
-                                    Total: <strong>{formatCurrency((parseFloat(fuelForm.liters) || 0) * (parseFloat(fuelForm.price_per_liter) || 0))}</strong>
-                                </div>
-                                <button type="submit" className="btn-action primary" style={{ width: '100%' }}>Add Fuel</button>
-                            </div>
-                        </form>
-                    </section>
-                </div>
+                <section className="analytics-card" style={{ marginTop: '1.25rem' }}>
+                    <h3 className="analytics-card-title">Log Fuel for {currentTrip.lr_number}</h3>
+                    <form onSubmit={handleFuelSubmit} className="driver-fuel-form">
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label>Liters</label>
+                            <input type="number" step="0.01" min="0.01" required value={fuelForm.liters}
+                                onChange={e => setFuelForm({ ...fuelForm, liters: e.target.value })} placeholder="e.g. 50" />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label>Price/Liter (&#8377;)</label>
+                            <input type="number" step="0.01" min="0.01" required value={fuelForm.price_per_liter}
+                                onChange={e => setFuelForm({ ...fuelForm, price_per_liter: e.target.value })} placeholder="e.g. 95" />
+                        </div>
+                        <div className="fuel-total-submit">
+                            <span className="fuel-total-display">Total: <strong>{fmt((parseFloat(fuelForm.liters) || 0) * (parseFloat(fuelForm.price_per_liter) || 0))}</strong></span>
+                            <button type="submit" className="btn-submit" style={{ marginTop: 0 }}>Add Fuel</button>
+                        </div>
+                    </form>
+                </section>
             )}
 
-            {/* Notifications */}
-            <div style={{ marginTop: '2rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                    <h3>Notifications {unreadCount > 0 && <span className="total-badge">{unreadCount} new</span>}</h3>
-                    {unreadCount > 0 && (
-                        <button onClick={markAllRead} className="btn-action primary">Mark all read</button>
-                    )}
-                </div>
-                {notifications.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        {notifications.map(n => (
-                            <div key={n.notification_id} className="stat-card" style={{ padding: '0.75rem 1rem', opacity: n.is_read ? 0.7 : 1, borderLeft: n.is_read ? '3px solid #e2e8f0' : '3px solid #4299e1' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <span style={{ fontSize: '0.9rem' }}>{n.message}</span>
-                                    <small style={{ color: '#718096', whiteSpace: 'nowrap', marginLeft: '1rem' }}>{new Date(n.created_at).toLocaleString()}</small>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                ) : (
-                    <p style={{ color: '#718096' }}>No notifications yet.</p>
-                )}
-            </div>
-
-            {/* Trip History */}
-            <h3 style={{ marginTop: '2rem', marginBottom: '1rem' }}>Recent Trip History</h3>
-            <div className="list-section" style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', overflowX: 'auto' }}>
-                <table className="data-table">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>LR Number</th>
-                            <th>Route</th>
-                            <th>Freight</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {tripHistory.length > 0 ? tripHistory.map(trip => (
-                            <tr key={trip.trip_id}>
-                                <td>{trip.start_time ? new Date(trip.start_time).toLocaleDateString() : 'N/A'}</td>
-                                <td><strong>{trip.lr_number}</strong></td>
-                                <td>{trip.source} &rarr; {trip.destination}</td>
-                                <td>{formatCurrency(trip.base_freight)}</td>
-                                <td><span className="status-badge completed">Completed</span></td>
-                            </tr>
-                        )) : (
-                            <tr><td colSpan="5" className="empty-state">No completed trips yet.</td></tr>
+            {/* Notifications + Trip History */}
+            <div className="analytics-two-col" style={{ marginTop: '1.25rem' }}>
+                <section className="analytics-card">
+                    <div className="analytics-card-header-row">
+                        <h3 className="analytics-card-title">Notifications</h3>
+                        {unreadCount > 0 && (
+                            <button onClick={markAllRead} className="btn-action primary">Mark all read</button>
                         )}
-                    </tbody>
-                </table>
+                    </div>
+                    {notifications.length > 0 ? (
+                        <div className="activity-feed">
+                            {notifications.map(n => (
+                                <div key={n.notification_id} className={`activity-item ${n.is_read ? 'activity-read' : ''}`}>
+                                    <span className="activity-msg">{n.message}</span>
+                                    <small className="activity-time">{new Date(n.created_at).toLocaleString()}</small>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="analytics-empty">No notifications yet.</p>
+                    )}
+                </section>
+
+                <section className="analytics-card">
+                    <h3 className="analytics-card-title">Recent Trip History</h3>
+                    {tripHistory.length > 0 ? (
+                        <div className="recent-trips-list">
+                            {tripHistory.map(trip => (
+                                <div key={trip.trip_id} className="recent-trip-row">
+                                    <div className="recent-trip-info">
+                                        <strong>{trip.lr_number}</strong>
+                                        <span>{trip.source} → {trip.destination}</span>
+                                    </div>
+                                    <div className="recent-trip-meta">
+                                        <span className="recent-trip-amount">{fmt(trip.base_freight)}</span>
+                                        <small>{trip.start_time ? new Date(trip.start_time).toLocaleDateString() : ''}</small>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="analytics-empty">No completed trips yet.</p>
+                    )}
+                </section>
             </div>
         </>
     );

@@ -284,7 +284,7 @@ const TripController = {
         }
     },
 
-    // GET /api/trips/analytics/summary — Enhanced with financial KPIs
+    // GET /api/trips/analytics/summary — Comprehensive dashboard analytics
     async getTripAnalytics(req, res, next) {
         try {
             const filters = {
@@ -296,10 +296,18 @@ const TripController = {
 
             Object.keys(filters).forEach(key => filters[key] === undefined && delete filters[key]);
 
-            const analytics = await TripModel.getTripAnalytics(filters);
-            const invoiceTotals = await InvoiceModel.getDashboardTotals();
-            const expenseTotals = await ExpenseModel.getGlobalTotals();
-            const availableCount = await TruckModel.getAvailableCount();
+            const [analytics, invoiceTotals, expenseTotals, availableCount, monthlyTrips, topRoutes, recentCompleted, expenseCategories, expenseMonthly, truckStatus] = await Promise.all([
+                TripModel.getTripAnalytics(filters),
+                InvoiceModel.getDashboardTotals(),
+                ExpenseModel.getGlobalTotals(),
+                TruckModel.getAvailableCount(),
+                TripModel.getMonthlyTrends(),
+                TripModel.getTopRoutes(5),
+                TripModel.getRecentCompleted(5),
+                ExpenseModel.getCategoryBreakdown(),
+                ExpenseModel.getMonthlyTrends(),
+                TruckModel.getStatusBreakdown()
+            ]);
 
             const totalRevenue = parseFloat(invoiceTotals.total_revenue) || 0;
             const totalExpenses = parseFloat(expenseTotals.total_expenses) || 0;
@@ -313,7 +321,30 @@ const TripController = {
                     net_profit: FinanceService.calculateProfit(totalRevenue, totalExpenses),
                     average_dead_mileage_percent: analytics.avg_dead_mileage_pct || 0,
                     running_trips_count: parseInt(analytics.running_trips) || 0,
-                    available_trucks_count: availableCount
+                    available_trucks_count: availableCount,
+                    // Extended analytics
+                    trip_counts: {
+                        total: parseInt(analytics.total_trips) || 0,
+                        completed: parseInt(analytics.completed_trips) || 0,
+                        running: parseInt(analytics.running_trips) || 0,
+                        planned: parseInt(analytics.planned_trips) || 0,
+                        cancelled: parseInt(analytics.cancelled_trips) || 0
+                    },
+                    total_distance: parseFloat(analytics.total_distance) || 0,
+                    avg_freight: parseFloat(analytics.average_base_freight) || 0,
+                    invoice_counts: {
+                        total: parseInt(invoiceTotals.total_invoices) || 0,
+                        pending: parseInt(invoiceTotals.pending_count) || 0,
+                        partial: parseInt(invoiceTotals.partial_count) || 0,
+                        paid: parseInt(invoiceTotals.paid_count) || 0
+                    },
+                    total_invoiced: parseFloat(invoiceTotals.total_invoiced) || 0,
+                    truck_status: truckStatus,
+                    monthly_trips: monthlyTrips,
+                    monthly_expenses: expenseMonthly,
+                    top_routes: topRoutes,
+                    recent_completed: recentCompleted,
+                    expense_categories: expenseCategories
                 }
             });
         } catch (error) {

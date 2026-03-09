@@ -34,6 +34,19 @@ const TruckModel = {
         return parseInt(result.rows[0].count);
     },
 
+    // Status breakdown for dashboard
+    async getStatusBreakdown() {
+        const result = await pool.query(`
+            SELECT status, COUNT(*) as count
+            FROM trucks WHERE deleted_at IS NULL
+            GROUP BY status
+        `);
+        const breakdown = { Available: 0, Assigned: 0, Maintenance: 0 };
+        result.rows.forEach(r => { breakdown[r.status] = parseInt(r.count); });
+        breakdown.total = Object.values(breakdown).reduce((a, b) => a + b, 0);
+        return breakdown;
+    },
+
     // Check if truck number exists (for validation)
     async findByTruckNumber(truck_number, excludeId = null) {
         let query = 'SELECT * FROM trucks WHERE truck_number = $1 AND deleted_at IS NULL';

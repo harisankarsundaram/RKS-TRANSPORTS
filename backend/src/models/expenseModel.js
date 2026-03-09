@@ -158,6 +158,36 @@ const ExpenseModel = {
             FROM expenses
         `);
         return result.rows[0];
+    },
+
+    // Monthly expense trends (last 6 months)
+    async getMonthlyTrends() {
+        const result = await pool.query(`
+            SELECT 
+                TO_CHAR(created_at, 'YYYY-MM') as month,
+                TO_CHAR(created_at, 'Mon') as month_label,
+                COALESCE(SUM(amount), 0) as total,
+                COUNT(*) as entries
+            FROM expenses
+            WHERE created_at >= NOW() - INTERVAL '6 months'
+            GROUP BY TO_CHAR(created_at, 'YYYY-MM'), TO_CHAR(created_at, 'Mon')
+            ORDER BY month
+        `);
+        return result.rows;
+    },
+
+    // Category breakdown for dashboard
+    async getCategoryBreakdown() {
+        const result = await pool.query(`
+            SELECT 
+                category,
+                COALESCE(SUM(amount), 0) as total,
+                COUNT(*) as count
+            FROM expenses
+            GROUP BY category
+            ORDER BY total DESC
+        `);
+        return result.rows;
     }
 };
 

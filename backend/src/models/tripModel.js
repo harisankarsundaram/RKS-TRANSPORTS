@@ -322,6 +322,55 @@ const TripModel = {
         return result.rows[0];
     },
 
+    // Monthly trip trends (last 6 months)
+    async getMonthlyTrends() {
+        const result = await pool.query(`
+            SELECT 
+                TO_CHAR(created_at, 'YYYY-MM') as month,
+                TO_CHAR(created_at, 'Mon') as month_label,
+                COUNT(*) as trips,
+                COUNT(CASE WHEN status = 'Completed' THEN 1 END) as completed,
+                COALESCE(SUM(CASE WHEN status = 'Completed' THEN base_freight ELSE 0 END), 0) as revenue,
+                COALESCE(SUM(CASE WHEN status = 'Completed' THEN distance_km ELSE 0 END), 0) as distance
+            FROM trips
+            WHERE created_at >= NOW() - INTERVAL '6 months'
+            GROUP BY TO_CHAR(created_at, 'YYYY-MM'), TO_CHAR(created_at, 'Mon')
+            ORDER BY month
+        `);
+        return result.rows;
+    },
+
+    // Top routes by frequency
+    async getTopRoutes(limit = 5) {
+        const result = await pool.query(`
+            SELECT 
+                source, destination,
+                COUNT(*) as trip_count,
+                COALESCE(SUM(CASE WHEN status = 'Completed' THEN base_freight ELSE 0 END), 0) as total_revenue,
+                COALESCE(AVG(CASE WHEN status = 'Completed' THEN distance_km END), 0) as avg_distance
+            FROM trips
+            GROUP BY source, destination
+            ORDER BY trip_count DESC
+            LIMIT $1
+        `, [limit]);
+        return result.rows;
+    },
+
+    // Recent completed trips (for activity feed)
+    async getRecentCompleted(limit = 5) {
+        const result = await pool.query(`
+            SELECT t.trip_id, t.lr_number, t.source, t.destination, t.base_freight, 
+                   t.distance_km, t.end_time, tr.truck_number, d.name as driver_name
+            FROM trips t
+            JOIN trucks tr ON t.truck_id = tr.truck_id
+            JOIN drivers d ON t.driver_id = d.driver_id
+            WHERE t.status = 'Completed'
+            ORDER BY t.end_time DESC NULLS LAST
+            LIMIT $1
+        `, [limit]);
+        return result.rows;
+    },
+
     // Get driver trip history with statistics
     async getDriverTripHistory(driverId) {
         const trips = await pool.query(
