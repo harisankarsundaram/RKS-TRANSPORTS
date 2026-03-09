@@ -427,9 +427,9 @@
   margin-top: 2px;
 }
 
-.fleet-available { color: #10B981; }
-.fleet-assigned { color: #3B82F6; }
-.fleet-maintenance { color: #F59E0B; }
+.fleet-available { color: #1D4ED8; }
+.fleet-assigned { color: #2563EB; }
+.fleet-maintenance { color: #475569; }
 
 /* Utilization bar */
 .utilization-bar-wrap {
@@ -459,8 +459,8 @@
 }
 
 .seg-assigned { background-color: #3B82F6; }
-.seg-maintenance { background-color: #F59E0B; }
-.seg-available { background-color: #10B981; }
+.seg-maintenance { background-color: #64748B; }
+.seg-available { background-color: #1D4ED8; }
 
 .utilization-legend {
   display: flex;
@@ -484,8 +484,8 @@
 }
 
 .dot-assigned { background: #3B82F6; }
-.dot-maintenance { background: #F59E0B; }
-.dot-available { background: #10B981; }
+.dot-maintenance { background: #64748B; }
+.dot-available { background: #1D4ED8; }
 
 /* Trip Breakdown */
 .trip-breakdown-grid {
@@ -523,9 +523,9 @@
 }
 
 .tb-running { color: #3B82F6; }
-.tb-planned { color: #F59E0B; }
-.tb-completed { color: #10B981; }
-.tb-cancelled { color: #EF4444; }
+.tb-planned { color: #64748B; }
+.tb-completed { color: #1D4ED8; }
+.tb-cancelled { color: #334155; }
 
 .trip-extra-stats {
   display: flex;
@@ -599,8 +599,8 @@
   min-height: 4px;
 }
 
-.bar-fill-green { background: linear-gradient(180deg, #10B981, #059669); }
-.bar-fill-red { background: linear-gradient(180deg, #F87171, #EF4444); }
+.bar-fill-green { background: linear-gradient(180deg, #3B82F6, #1D4ED8); }
+.bar-fill-red { background: linear-gradient(180deg, #94A3B8, #64748B); }
 
 .bar-label {
   font-size: 0.72rem;
@@ -696,9 +696,9 @@
   color: var(--text-muted);
 }
 
-.inv-paid .invoice-stat-value { color: #10B981; }
-.inv-partial .invoice-stat-value { color: #F59E0B; }
-.inv-pending .invoice-stat-value { color: #EF4444; }
+.inv-paid .invoice-stat-value { color: #1D4ED8; }
+.inv-partial .invoice-stat-value { color: #2563EB; }
+.inv-pending .invoice-stat-value { color: #334155; }
 
 .invoice-total-row {
   display: flex;
@@ -767,9 +767,9 @@
 }
 
 .activity-item.activity-trip_started { border-left-color: #3B82F6; }
-.activity-item.activity-trip_completed { border-left-color: #10B981; }
-.activity-item.activity-trip_cancelled { border-left-color: #EF4444; }
-.activity-item.activity-trip_assigned { border-left-color: #F59E0B; }
+.activity-item.activity-trip_completed { border-left-color: #1D4ED8; }
+.activity-item.activity-trip_cancelled { border-left-color: #334155; }
+.activity-item.activity-trip_assigned { border-left-color: #2563EB; }
 .activity-item.activity-read { opacity: 0.6; }
 
 .activity-msg {
@@ -1094,7 +1094,7 @@
   padding: 0.2rem 0.5rem;
   border-radius: 999px;
   background: #EEF2FF;
-  color: #4338CA;
+  color: #1E3A8A;
 }
 
 .kpi-trend-up {
