@@ -45,8 +45,7 @@
 
 .error-boundary h1 {
   margin-bottom: 1rem;
-  color: #dc2626;
-  /* Red-600 */
+  color: var(--primary-dark);
 }
 
 .error-boundary p {
@@ -106,11 +105,11 @@
 }
 
 .toast-success {
-  border-left: 4px solid #10b981;
+  border-left: 4px solid var(--primary-light);
 }
 
 .toast-error {
-  border-left: 4px solid #ef4444;
+  border-left: 4px solid var(--primary-dark);
 }
 
 .toast-info {
