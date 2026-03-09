@@ -109,13 +109,13 @@ function TripManagement() {
         }
     };
 
-    const getStatusColor = (status) => {
+    const getStatusClass = (status) => {
         switch (status) {
-            case 'Completed': return '#48bb78';
-            case 'Running': return '#4299e1';
-            case 'Planned': return '#ed8936';
-            case 'Cancelled': return '#e53e3e';
-            default: return '#718096';
+            case 'Completed': return 'completed';
+            case 'Running': return 'running';
+            case 'Planned': return 'planned';
+            case 'Cancelled': return 'cancelled';
+            default: return 'neutral';
         }
     };
 
@@ -257,10 +257,10 @@ function TripManagement() {
             {loading ? <div>Loading trips...</div> : (
                 <div className="trip-grid">
                     {trips.map(trip => (
-                        <div key={trip.trip_id} className="trip-card" style={{ borderLeft: `5px solid ${getStatusColor(trip.status)}` }}>
+                        <div key={trip.trip_id} className="trip-card">
                             <div className="trip-card-header">
                                 <strong style={{ fontSize: '1.15rem' }}>{trip.lr_number}</strong>
-                                <span style={{ backgroundColor: getStatusColor(trip.status), color: 'white', padding: '0.2rem 0.6rem', borderRadius: '4px', fontSize: '0.8rem' }}>{trip.status}</span>
+                                <span className={`status-badge ${getStatusClass(trip.status)}`}>{trip.status}</span>
                             </div>
                             <div className="trip-card-body">
                                 <div><strong>Route:</strong> {trip.source} &rarr; {trip.destination}</div>
@@ -278,8 +278,12 @@ function TripManagement() {
                             )}
 
                             <div className="trip-card-footer">
-                                <span style={{ color: '#718096' }}>{(parseFloat(trip.empty_km || 0) + parseFloat(trip.loaded_km || 0)) || trip.distance_km || 0} KM</span>
-                                <strong style={{ color: '#2C5F2D' }}>{fmt(trip.base_freight || trip.freight_amount)}</strong>
+                                <span className="trip-card-distance">{(parseFloat(trip.empty_km || 0) + parseFloat(trip.loaded_km || 0)) || trip.distance_km || 0} KM</span>
+                                {user?.role === 'admin' ? (
+                                    <strong className="trip-card-amount">{fmt(trip.base_freight || trip.freight_amount)}</strong>
+                                ) : (
+                                    <strong className="trip-card-meta">{trip.status}</strong>
+                                )}
                             </div>
 
                             {/* Action Buttons */}
@@ -299,7 +303,7 @@ function TripManagement() {
                             </div>
                         </div>
                     ))}
-                    {trips.length === 0 && <p style={{ color: '#718096' }}>No trips found for this filter.</p>}
+                    {trips.length === 0 && <p className="empty-state">No trips found for this filter.</p>}
                 </div>
             )}
         </div>
