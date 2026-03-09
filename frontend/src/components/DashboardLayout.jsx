@@ -18,7 +18,7 @@ function DashboardLayout({ role }) {
                     <h2>{role === 'admin' ? 'RKS Admin' : 'RKS Pilot'}</h2>
                 </div>
                 <nav className="sidebar-nav">
-                    <div style={{ marginBottom: '1rem', paddingBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                    <div style={{ marginBottom: '1rem', paddingBottom: '1rem', borderBottom: '1px solid var(--border-light)' }}>
                         <NavLink to="/" className="nav-item">
                             <span>&larr; Back to Home</span>
                         </NavLink>
@@ -45,7 +45,7 @@ function DashboardLayout({ role }) {
                                 <span>Maintenance</span>
                             </NavLink>
 
-                            <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                            <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border-light)' }}>
                                 <NavLink to="/expenses" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
                                     <span>Expenses</span>
                                 </NavLink>

@@ -39,7 +39,7 @@
 }
 
 .auth-card--owner {
-  border-top: 3px solid var(--primary, #1B4332);
+  border-top: 3px solid var(--primary, #1D4ED8);
 }
 
 .auth-card-tabs {
@@ -61,14 +61,14 @@
 }
 
 .auth-card-tab:hover {
-  color: var(--primary, #1B4332);
-  background: rgba(27, 67, 50, 0.03);
+  color: var(--primary, #1D4ED8);
+  background: rgba(29, 78, 216, 0.06);
 }
 
 .auth-card-tab--active {
   background: white;
-  color: var(--primary, #1B4332);
-  border-bottom: 2px solid var(--primary, #1B4332);
+  color: var(--primary, #1D4ED8);
+  border-bottom: 2px solid var(--primary, #1D4ED8);
 }
 
 .auth-card-body {
@@ -104,12 +104,12 @@
 
 .auth-form input:focus {
   outline: none;
-  border-color: var(--primary, #1B4332);
-  box-shadow: 0 0 0 3px rgba(27, 67, 50, 0.06);
+  border-color: var(--primary, #1D4ED8);
+  box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.12);
 }
 
 .btn-primary {
-  background-color: var(--primary, #1B4332);
+  background-color: var(--primary, #1D4ED8);
   color: white;
   border: none;
   padding: 0.75rem;
@@ -118,13 +118,13 @@
   font-weight: 700;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 2px 8px rgba(27, 67, 50, 0.12);
+  box-shadow: 0 2px 8px rgba(29, 78, 216, 0.2);
 }
 
 .btn-primary:hover {
-  background-color: #2D6A4F;
+  background-color: #1E40AF;
   transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(27, 67, 50, 0.18);
+  box-shadow: 0 4px 14px rgba(29, 78, 216, 0.28);
 }
 
 .btn-primary:active {

@@ -1,8 +1,8 @@
 /* RKS Premium White — Management Pages */
 
 :root {
-    --rks-green-dark: #1B4332;
-    --rks-green-light: #2D6A4F;
+    --rks-green-dark: #1D4ED8;
+    --rks-green-light: #2563EB;
     --rks-cream: #F8F9FA;
 }
 
@@ -85,7 +85,7 @@
 .form-group textarea:focus {
     outline: none;
     border-color: var(--rks-green-dark);
-    box-shadow: 0 0 0 3px rgba(27, 67, 50, 0.06);
+    box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.12);
 }
 
 .form-group input::placeholder {
@@ -110,7 +110,7 @@
 .btn-submit:hover {
     background-color: var(--rks-green-light);
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(27, 67, 50, 0.15);
+    box-shadow: 0 4px 12px rgba(29, 78, 216, 0.22);
 }
 
 /* List/Table Styles */

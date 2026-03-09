@@ -43,8 +43,8 @@
 
 .auth-form input:focus {
   outline: none;
-  border-color: var(--primary, #1B4332);
-  box-shadow: 0 0 0 3px rgba(27, 67, 50, 0.06);
+  border-color: var(--primary, #1D4ED8);
+  box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.12);
 }
 
 .auth-form input::placeholder {
@@ -64,5 +64,5 @@
 
 .auth-switch a {
   font-weight: 600;
-  color: var(--primary, #1B4332);
+  color: var(--primary, #1D4ED8);
 }

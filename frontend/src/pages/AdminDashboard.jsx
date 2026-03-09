@@ -136,7 +136,7 @@ function AdminDashboard() {
                     <span className="kpi-trend">{L || (data?.expense_categories?.length || 0)} categories</span>
                 </div>
                 <div className={`analytics-kpi-card premium-kpi-card ${(data?.net_profit || 0) >= 0 ? 'kpi-profit' : 'kpi-loss'}`}>
-                    <div className="kpi-icon">{(data?.net_profit || 0) >= 0 ? '&#9650;' : '&#9660;'}</div>
+                    <div className="kpi-icon">{(data?.net_profit || 0) >= 0 ? '+' : '-'}</div>
                     <div className="kpi-content">
                         <span className="kpi-value">{L || fmt(data?.net_profit)}</span>
                         <span className="kpi-label">Net Profit</span>
