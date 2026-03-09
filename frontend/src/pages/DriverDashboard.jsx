@@ -3,6 +3,52 @@ import { useAuth } from '../context/AuthContext';
 import apiClient from '../api/client';
 import './Management.css';
 
+function KpiSvg({ kind }) {
+    const common = { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' };
+
+    if (kind === 'trips') {
+        return (
+            <svg {...common} aria-hidden="true">
+                <rect x="3" y="7" width="13" height="10" rx="2" />
+                <path d="M16 10h2.8l2.2 2.4V17h-5" />
+                <circle cx="7" cy="17" r="1.6" />
+                <circle cx="17" cy="17" r="1.6" />
+            </svg>
+        );
+    }
+
+    if (kind === 'completed') {
+        return (
+            <svg {...common} aria-hidden="true">
+                <circle cx="12" cy="12" r="8" />
+                <path d="m8.5 12.3 2.2 2.2 4.8-4.8" />
+            </svg>
+        );
+    }
+
+    if (kind === 'distance') {
+        return (
+            <svg {...common} aria-hidden="true">
+                <path d="M4 6h16" />
+                <path d="M4 12h10" />
+                <path d="M4 18h16" />
+                <path d="M8 4v4" />
+                <path d="M14 10v4" />
+                <path d="M18 16v4" />
+            </svg>
+        );
+    }
+
+    return (
+        <svg {...common} aria-hidden="true">
+            <rect x="3" y="5" width="18" height="14" rx="2" />
+            <path d="M7.5 10.5h9" />
+            <path d="M7.5 14h5" />
+            <text x="7" y="9" fontSize="4" fill="currentColor" stroke="none">Rs</text>
+        </svg>
+    );
+}
+
 function DriverDashboard() {
     const { user } = useAuth();
     const [driverData, setDriverData] = useState(null);
@@ -115,28 +161,28 @@ function DriverDashboard() {
             {/* Performance KPIs */}
             <section className="analytics-kpi-row">
                 <div className="analytics-kpi-card kpi-revenue">
-                    <div className="kpi-icon">&#128666;</div>
+                    <div className="kpi-icon"><KpiSvg kind="trips" /></div>
                     <div className="kpi-content">
                         <span className="kpi-value">{driverStats ? driverStats.total_trips : 0}</span>
                         <span className="kpi-label">Total Trips</span>
                     </div>
                 </div>
                 <div className="analytics-kpi-card kpi-profit">
-                    <div className="kpi-icon">&#9989;</div>
+                    <div className="kpi-icon"><KpiSvg kind="completed" /></div>
                     <div className="kpi-content">
                         <span className="kpi-value">{driverStats ? driverStats.completed_trips : 0}</span>
                         <span className="kpi-label">Completed</span>
                     </div>
                 </div>
                 <div className="analytics-kpi-card kpi-outstanding">
-                    <div className="kpi-icon">&#128736;</div>
+                    <div className="kpi-icon"><KpiSvg kind="distance" /></div>
                     <div className="kpi-content">
                         <span className="kpi-value">{driverStats ? `${num(driverStats.total_distance)} km` : '0 km'}</span>
                         <span className="kpi-label">Total Distance</span>
                     </div>
                 </div>
                 <div className="analytics-kpi-card kpi-expenses">
-                    <div className="kpi-icon">&#8377;</div>
+                    <div className="kpi-icon"><KpiSvg kind="freight" /></div>
                     <div className="kpi-content">
                         <span className="kpi-value">{driverStats ? fmt(driverStats.total_revenue) : fmt(0)}</span>
                         <span className="kpi-label">Freight Hauled</span>
@@ -289,7 +335,6 @@ function DriverDashboard() {
                                         <span>{trip.source} → {trip.destination}</span>
                                     </div>
                                     <div className="recent-trip-meta">
-                                        <span className="recent-trip-amount">{fmt(trip.base_freight)}</span>
                                         <small>{trip.start_time ? new Date(trip.start_time).toLocaleDateString() : ''}</small>
                                     </div>
                                 </div>
