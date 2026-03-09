@@ -1,28 +1,30 @@
-/* Standardized RKS Theme for Management Pages */
+/* RKS Premium White — Management Pages */
 
 :root {
-    --rks-green-dark: #2C5F2D;
-    --rks-green-light: #97BC62;
-    --rks-cream: #F2F5D0;
+    --rks-green-dark: #1B4332;
+    --rks-green-light: #2D6A4F;
+    --rks-cream: #F8F9FA;
 }
 
 .management-page {
-    padding: 2.5rem;
+    padding: 2rem;
     max-width: 1400px;
     margin: 0 auto;
 }
 
 .management-page h1 {
-    font-size: 2rem;
-    color: #1a202c;
-    margin-bottom: 0.5rem;
+    font-size: 1.75rem;
+    color: var(--text-main);
+    margin-bottom: 0.25rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
 }
 
 .management-container {
     display: grid;
     grid-template-columns: 1fr 2fr;
-    gap: 2rem;
-    margin-top: 2rem;
+    gap: 1.5rem;
+    margin-top: 1.5rem;
 }
 
 @media (max-width: 900px) {
@@ -31,90 +33,100 @@
     }
 }
 
-/* Form Styles - Matching AuthCards */
+/* Form Styles — Clean minimal */
 .form-section {
     background: white;
-    padding: 2rem;
-    border-radius: 16px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    padding: 1.75rem;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
     height: fit-content;
-    border-top: 4px solid var(--rks-green-dark);
+    border: 1px solid var(--border-light);
+    border-top: 3px solid var(--rks-green-dark);
 }
 
 .form-section h2 {
-    color: var(--rks-green-dark);
-    margin-bottom: 1.5rem;
-    font-size: 1.5rem;
+    color: var(--text-main);
+    margin-bottom: 1.25rem;
+    font-size: 1.15rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
 }
 
 .form-group {
-    margin-bottom: 1.25rem;
+    margin-bottom: 1rem;
 }
 
 .form-group label {
     display: block;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.4rem;
     font-weight: 600;
-    color: #4a5568;
-    font-size: 0.9rem;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.06em;
 }
 
 .form-group input,
 .form-group select,
 .form-group textarea {
     width: 100%;
-    padding: 0.8rem 1rem;
-    border: 2px solid #e2e8f0;
-    border-radius: 10px;
-    font-size: 1rem;
-    background-color: #f8fafc;
+    padding: 0.7rem 0.85rem;
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-sm);
+    font-size: 0.9rem;
+    background-color: #FFFFFF;
     transition: all 0.2s;
     font-family: inherit;
+    color: var(--text-main);
 }
 
 .form-group input:focus,
 .form-group select:focus,
 .form-group textarea:focus {
     outline: none;
-    border-color: var(--rks-green-light);
-    background-color: white;
-    box-shadow: 0 0 0 3px rgba(151, 188, 98, 0.1);
+    border-color: var(--rks-green-dark);
+    box-shadow: 0 0 0 3px rgba(27, 67, 50, 0.06);
+}
+
+.form-group input::placeholder {
+    color: var(--text-muted);
 }
 
 .btn-submit {
     width: 100%;
-    padding: 1rem;
+    padding: 0.75rem;
     background-color: var(--rks-green-dark);
     color: white;
     border: none;
-    border-radius: 10px;
+    border-radius: var(--radius-sm);
     cursor: pointer;
-    font-weight: 700;
-    font-size: 1rem;
-    transition: transform 0.1s, box-shadow 0.2s;
-    margin-top: 1rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    margin-top: 0.75rem;
+    letter-spacing: 0.01em;
 }
 
 .btn-submit:hover {
-    background-color: #1e4520;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(44, 95, 45, 0.2);
+    background-color: var(--rks-green-light);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(27, 67, 50, 0.15);
 }
 
 /* List/Table Styles */
 .list-section {
     background: white;
-    padding: 2rem;
-    border-radius: 16px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    padding: 1.75rem;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+    border: 1px solid var(--border-light);
 }
 
 .list-section h2 {
-    color: #2d3748;
-    margin-bottom: 1.5rem;
-    font-size: 1.5rem;
+    color: var(--text-main);
+    margin-bottom: 1.25rem;
+    font-size: 1.15rem;
+    font-weight: 700;
 }
 
 .data-table {
@@ -124,22 +136,23 @@
 }
 
 .data-table th {
-    background-color: #f7fafc;
-    color: #4a5568;
+    background-color: #FAFAFA;
+    color: var(--text-muted);
     font-weight: 600;
     text-transform: uppercase;
-    font-size: 0.85rem;
-    letter-spacing: 0.5px;
-    padding: 1rem;
-    border-bottom: 2px solid #e2e8f0;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    padding: 0.75rem 0.85rem;
+    border-bottom: 1px solid var(--border-light);
     text-align: left;
 }
 
 .data-table td {
-    padding: 1rem;
-    border-bottom: 1px solid #e2e8f0;
-    color: #2d3748;
+    padding: 0.75rem 0.85rem;
+    border-bottom: 1px solid var(--border-light);
+    color: var(--text-main);
     vertical-align: middle;
+    font-size: 0.88rem;
 }
 
 .data-table tr:last-child td {
@@ -147,28 +160,29 @@
 }
 
 .data-table tr:hover {
-    background-color: #f7fafc;
+    background-color: #FAFAFA;
 }
 
-/* Status Badges */
+/* Status Badges — Refined */
 .status-badge {
-    padding: 0.35rem 0.75rem;
-    border-radius: 20px;
-    font-size: 0.85rem;
+    padding: 0.3rem 0.65rem;
+    border-radius: 100px;
+    font-size: 0.75rem;
     font-weight: 600;
     display: inline-block;
+    letter-spacing: 0.02em;
 }
 
 .status-badge.available {
-    background-color: #F0FFF4;
-    color: #2C5F2D;
-    border: 1px solid #C6F6D5;
+    background-color: #ECFDF5;
+    color: #065F46;
+    border: 1px solid #A7F3D0;
 }
 
 .status-badge.assigned {
-    background-color: #EBF8FF;
-    color: #2B6CB0;
-    border: 1px solid #BEE3F8;
+    background-color: #EFF6FF;
+    color: #1E40AF;
+    border: 1px solid #BFDBFE;
 }
 
 .status-badge.on-trip {
@@ -178,70 +192,72 @@
 }
 
 .status-badge.maintenance {
-    background-color: #FFF5F5;
-    color: #C53030;
-    border: 1px solid #FED7D7;
+    background-color: #FEF2F2;
+    color: #991B1B;
+    border: 1px solid #FECACA;
 }
 
 /* Alert Messages */
 .alert-message {
-    padding: 1rem;
-    border-radius: 10px;
-    margin-bottom: 1.5rem;
+    padding: 0.85rem 1rem;
+    border-radius: var(--radius-sm);
+    margin-bottom: 1.25rem;
     font-weight: 600;
+    font-size: 0.88rem;
 }
 
 .alert-message.success {
-    background: #F0FFF4;
-    color: #2C5F2D;
-    border: 1px solid #C6F6D5;
+    background: #ECFDF5;
+    color: #065F46;
+    border: 1px solid #A7F3D0;
 }
 
 .alert-message.error {
-    background: #FFF5F5;
-    color: #C53030;
-    border: 1px solid #FED7D7;
+    background: #FEF2F2;
+    color: #991B1B;
+    border: 1px solid #FECACA;
 }
 
-/* Action Buttons */
+/* Action Buttons — Minimal */
 .btn-action {
-    border-radius: 6px;
-    padding: 0.35rem 0.7rem;
+    border-radius: var(--radius-sm);
+    padding: 0.3rem 0.65rem;
     cursor: pointer;
     font-weight: 600;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     border: 1px solid;
     transition: all 0.15s;
+    letter-spacing: 0.01em;
 }
 
 .btn-action.danger {
-    background: #FFF5F5;
-    color: #C53030;
-    border-color: #FED7D7;
+    background: #FEF2F2;
+    color: #991B1B;
+    border-color: #FECACA;
 }
 
 .btn-action.danger:hover {
-    background: #FED7D7;
+    background: #FECACA;
 }
 
 .btn-action.primary {
-    background: #EBF8FF;
-    color: #2B6CB0;
-    border-color: #BEE3F8;
+    background: #EFF6FF;
+    color: #1E40AF;
+    border-color: #BFDBFE;
 }
 
 .btn-action.primary:hover {
-    background: #BEE3F8;
+    background: #BFDBFE;
 }
 
 .btn-action.success {
-    background: #F0FFF4;
-    color: #2C5F2D;
-    border-color: #C6F6D5;
+    background: #ECFDF5;
+    color: #065F46;
+    border-color: #A7F3D0;
 }
 
 .btn-action.success:hover {
-    background: #C6F6D5;
+    background: #A7F3D0;
 }
 
 .btn-action.warning {
@@ -257,54 +273,55 @@
 /* Filter Buttons */
 .filter-bar {
     display: flex;
-    gap: 0.5rem;
+    gap: 0.35rem;
     flex-wrap: wrap;
-    margin-bottom: 1.5rem;
+    margin-bottom: 1.25rem;
 }
 
 .btn-filter {
-    padding: 0.45rem 0.9rem;
-    border-radius: 6px;
-    border: 1px solid #cbd5e0;
+    padding: 0.4rem 0.85rem;
+    border-radius: 100px;
+    border: 1px solid var(--border-medium);
     background: white;
-    color: #2d3748;
+    color: var(--text-secondary);
     cursor: pointer;
     font-weight: 600;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     transition: all 0.2s;
 }
 
 .btn-filter:hover:not(.active) {
-    background-color: #edf2f7;
+    background-color: #F5F5F5;
+    color: var(--text-main);
 }
 
 .btn-filter.active {
     background-color: var(--rks-green-dark);
     color: white;
     border-color: var(--rks-green-dark);
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
 /* KPI / Stat Cards */
 .kpi-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 1rem;
-    margin-bottom: 2rem;
+    margin-bottom: 1.5rem;
 }
 
 /* Trip Cards */
 .trip-card {
     background: white;
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     padding: 1.5rem;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-    transition: transform 0.2s, box-shadow 0.2s;
+    border: 1px solid var(--border-light);
+    box-shadow: var(--shadow-card);
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .trip-card:hover {
-    transform: scale(1.02);
-    box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-card-hover);
 }
 
 .trip-card-header {
@@ -315,18 +332,19 @@
 }
 
 .trip-card-body > div {
-    margin-bottom: 0.4rem;
+    margin-bottom: 0.35rem;
+    font-size: 0.88rem;
 }
 
 .trip-card-financials {
     margin-top: 0.75rem;
     padding-top: 0.75rem;
-    border-top: 1px dashed #e2e8f0;
+    border-top: 1px solid var(--border-light);
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 0.3rem;
-    font-size: 0.85rem;
-    color: #4a5568;
+    gap: 0.25rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
 }
 
 .trip-card-footer {
@@ -335,7 +353,7 @@
     align-items: center;
     margin-top: 1rem;
     padding-top: 0.75rem;
-    border-top: 1px solid #edf2f7;
+    border-top: 1px solid var(--border-light);
 }
 
 .trip-card-actions {
@@ -347,74 +365,76 @@
 .trip-card-actions button {
     flex: 1;
     padding: 0.5rem;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     border: none;
     color: white;
     font-weight: 600;
+    font-size: 0.85rem;
     cursor: pointer;
-    transition: opacity 0.15s;
+    transition: all 0.15s;
 }
 
 .trip-card-actions button:hover {
     opacity: 0.9;
+    transform: translateY(-1px);
 }
 
 .trip-card-actions .btn-start {
-    background-color: #4299e1;
+    background-color: #3B82F6;
 }
 
 .trip-card-actions .btn-cancel {
-    background-color: #e53e3e;
+    background-color: #EF4444;
 }
 
 .trip-card-actions .btn-complete {
-    background-color: #48bb78;
+    background-color: #10B981;
 }
 
 /* Standalone action buttons */
 .btn-start {
-    background-color: #4299e1;
+    background-color: #3B82F6;
     color: white;
     border: none;
-    border-radius: 10px;
-    padding: 0.6rem 1.2rem;
+    border-radius: var(--radius-sm);
+    padding: 0.55rem 1.1rem;
     font-weight: 600;
     cursor: pointer;
-    transition: opacity 0.15s;
+    transition: all 0.15s;
 }
 
-.btn-start:hover { opacity: 0.9; }
+.btn-start:hover { opacity: 0.9; transform: translateY(-1px); }
 
 .btn-complete {
-    background-color: #48bb78;
+    background-color: #10B981;
     color: white;
     border: none;
-    border-radius: 10px;
-    padding: 0.6rem 1.2rem;
+    border-radius: var(--radius-sm);
+    padding: 0.55rem 1.1rem;
     font-weight: 600;
     cursor: pointer;
-    transition: opacity 0.15s;
+    transition: all 0.15s;
 }
 
-.btn-complete:hover { opacity: 0.9; }
+.btn-complete:hover { opacity: 0.9; transform: translateY(-1px); }
 
 /* Grid layouts */
 .grid-3 {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 1rem;
+    gap: 0.85rem;
 }
 
 .grid-2 {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 1rem;
+    gap: 0.85rem;
 }
 
 .trip-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-    gap: 1.5rem;
+    gap: 1.25rem;
 }
 
 /* Section Headers */
@@ -422,16 +442,17 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1.5rem;
+    margin-bottom: 1.25rem;
 }
 
 /* Inline checkbox label */
 .checkbox-label {
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     margin-top: 0.3rem;
     display: flex;
     align-items: center;
     gap: 0.3rem;
+    color: var(--text-secondary);
 }
 
 .checkbox-label input[type="checkbox"] {
@@ -442,28 +463,30 @@
 .total-badge {
     background: var(--rks-green-dark);
     color: white;
-    padding: 0.4rem 1rem;
-    border-radius: 8px;
+    padding: 0.35rem 0.9rem;
+    border-radius: 100px;
     font-weight: 700;
+    font-size: 0.85rem;
 }
 
 /* Assigned truck display */
 .assigned-truck {
     font-weight: 600;
-    color: #2C5F2D;
+    color: var(--rks-green-dark);
 }
 
 /* Table action group */
 .action-group {
     display: flex;
-    gap: 0.4rem;
+    gap: 0.35rem;
 }
 
 /* Empty state */
 .empty-state {
     text-align: center;
-    padding: 2rem;
-    color: #718096;
+    padding: 3rem 2rem;
+    color: var(--text-muted);
+    font-size: 0.9rem;
 }
 
 /* Payment inline form */
@@ -476,27 +499,28 @@
 .payment-form input {
     width: 80px;
     padding: 0.3rem;
-    border-radius: 4px;
-    border: 1px solid #e2e8f0;
-    font-size: 0.85rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-medium);
+    font-size: 0.82rem;
 }
 
 /* Sub-section title */
 .sub-title {
-    margin: 1.5rem 0 1rem;
-    color: #4a5568;
-    font-size: 1rem;
+    margin: 1.5rem 0 0.75rem;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    font-weight: 600;
 }
 
 /* Form textarea */
 .form-textarea {
     width: 100%;
-    padding: 0.75rem;
-    border-radius: 8px;
-    border: 1px solid #e2e8f0;
+    padding: 0.7rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-medium);
     min-height: 80px;
     font-family: inherit;
-    font-size: 0.9rem;
+    font-size: 0.88rem;
 }
 
 @media (max-width: 768px) {

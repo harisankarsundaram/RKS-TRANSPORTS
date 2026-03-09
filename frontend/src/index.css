@@ -1,48 +1,57 @@
-/* RKS Transports Premium Design System */
+/* RKS Transports — Premium White Design System */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
+
 :root {
   /* Typography */
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-display: 'Outfit', 'Inter', sans-serif;
-  /* If you add Google Fonts later */
+  --font-display: 'Plus Jakarta Sans', 'Inter', sans-serif;
 
-  /* Modern Color Palette */
-  /* Primary: Deep sophisticated green */
-  --primary: #2C5F2D;
-  --primary-light: #4A804D;
-  --primary-dark: #1A3C1B;
+  /* Primary: Elegant deep charcoal-green */
+  --primary: #1B4332;
+  --primary-light: #2D6A4F;
+  --primary-dark: #0F2C1F;
+  --primary-50: #E8F5EE;
+  --primary-100: #D1EBE0;
 
-  /* Accent: Vibrant yet professional orange */
-  --accent: #FF8c00;
-  --accent-light: #FFA533;
-  --accent-hover: #E07B00;
+  /* Accent: Warm gold for highlights */
+  --accent: #D4A843;
+  --accent-light: #E5C36E;
+  --accent-hover: #BF9530;
 
-  /* Neutrals */
-  --bg-body: #F9FAFB;
+  /* Neutrals — Pure white foundation */
+  --bg-body: #FFFFFF;
   --bg-surface: #FFFFFF;
-  --bg-surface-alt: #F3F4F6;
+  --bg-surface-alt: #F8F9FA;
+  --bg-elevated: #FFFFFF;
 
-  --text-main: #111827;
-  --text-secondary: #4B5563;
+  --text-main: #1A1A2E;
+  --text-secondary: #6B7280;
   --text-muted: #9CA3AF;
   --text-inverted: #FFFFFF;
 
-  /* Borders & Shadows */
-  --border-light: #E5E7EB;
-  --border-focus: #2C5F2D;
+  /* Borders & Shadows — Subtle, premium */
+  --border-light: #F0F0F0;
+  --border-medium: #E5E7EB;
+  --border-focus: #1B4332;
 
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  --shadow-glow: 0 0 15px rgba(44, 95, 45, 0.15);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.08);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.1);
+  --shadow-glow: 0 0 20px rgba(27, 67, 50, 0.08);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+  --shadow-card-hover: 0 8px 25px rgba(0, 0, 0, 0.08);
 
   /* Spacing & Radius */
-  --radius-sm: 0.375rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 24px;
 
   /* Layout */
-  --header-height: 70px;
+  --header-height: 72px;
   --max-width: 1200px;
 }
 
@@ -60,7 +69,9 @@ body {
   color: var(--text-main);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   min-height: 100vh;
+  letter-spacing: -0.01em;
 }
 
 img,
@@ -84,20 +95,21 @@ h3,
 h4,
 h5,
 h6 {
-  font-family: var(--font-display, var(--font-sans));
+  font-family: var(--font-display);
   color: var(--text-main);
-  line-height: 1.2;
+  line-height: 1.15;
   font-weight: 700;
 }
 
 h1 {
-  font-size: 2.5rem;
-  letter-spacing: -0.02em;
+  font-size: 2.75rem;
+  letter-spacing: -0.03em;
+  font-weight: 800;
 }
 
 h2 {
   font-size: 2rem;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
 }
 
 h3 {
@@ -136,22 +148,22 @@ a:hover {
   justify-content: center;
 }
 
-/* Custom Scrollbar */
+/* Custom Scrollbar — Premium thin style */
 ::-webkit-scrollbar {
-  width: 10px;
+  width: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bg-surface-alt);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 5px;
+  background: #D1D5DB;
+  border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #9CA3AF;
 }
 /* Dashboard Period Selector */
 .period-selector {

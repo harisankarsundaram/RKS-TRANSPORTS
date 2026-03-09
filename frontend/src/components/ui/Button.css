@@ -31,9 +31,8 @@
 .btn-primary:hover:not(:disabled) {
     background-color: var(--primary-light);
     color: white;
-    /* Force white text to override global a:hover */
     box-shadow: var(--shadow-md);
-    transform: translateY(-2px);
+    transform: translateY(-1px);
 }
 
 .btn-accent {
@@ -45,9 +44,8 @@
 .btn-accent:hover:not(:disabled) {
     background-color: var(--accent-hover);
     color: white;
-    /* Force white text */
     box-shadow: var(--shadow-md);
-    transform: translateY(-2px);
+    transform: translateY(-1px);
 }
 
 .btn-secondary {
@@ -57,9 +55,9 @@
 }
 
 .btn-secondary:hover:not(:disabled) {
-    background-color: #e5e7eb;
-    border-color: #d1d5db;
-    transform: translateY(-2px);
+    background-color: #F3F4F6;
+    border-color: #D1D5DB;
+    transform: translateY(-1px);
     box-shadow: var(--shadow-sm);
 }
 
@@ -73,7 +71,7 @@
     background-color: var(--primary);
     color: white;
     box-shadow: var(--shadow-sm);
-    transform: translateY(-2px);
+    transform: translateY(-1px);
 }
 
 .btn-ghost {
@@ -84,7 +82,7 @@
 .btn-ghost:hover:not(:disabled) {
     background-color: var(--bg-surface-alt);
     color: var(--text-main);
-    transform: translateY(-2px);
+    transform: translateY(-1px);
 }
 
 /* Sizes */
