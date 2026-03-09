@@ -177,9 +177,9 @@
 .btn-logout-sidebar {
   width: 100%;
   padding: 0.75rem;
-  background-color: transparent;
-  color: #DC2626;
-  border: 1px solid #FEE2E2;
+  background-color: #EFF6FF;
+  color: var(--primary);
+  border: 1px solid #BFDBFE;
   border-radius: var(--radius-sm);
   cursor: pointer;
   font-weight: 600;
@@ -188,8 +188,8 @@
 }
 
 .btn-logout-sidebar:hover {
-  background-color: #FEF2F2;
-  border-color: #FECACA;
+  background-color: #DBEAFE;
+  border-color: #93C5FD;
 }
 
 
@@ -287,6 +287,12 @@
   border-radius: 10px;
   background: #F9FAFB;
   flex-shrink: 0;
+}
+
+.kpi-icon svg {
+  width: 20px;
+  height: 20px;
+  display: block;
 }
 
 .kpi-content {
