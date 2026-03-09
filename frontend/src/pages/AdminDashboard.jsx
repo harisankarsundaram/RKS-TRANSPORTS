@@ -3,6 +3,50 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import apiClient from '../api/client';
 
+function AdminKpiSvg({ kind }) {
+    const common = { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' };
+
+    if (kind === 'revenue') {
+        return (
+            <svg {...common} aria-hidden="true">
+                <rect x="3" y="5" width="18" height="14" rx="2" />
+                <path d="M7 10h10" />
+                <path d="M7 14h7" />
+                <text x="7" y="9" fontSize="4" fill="currentColor" stroke="none">Rs</text>
+            </svg>
+        );
+    }
+
+    if (kind === 'outstanding') {
+        return (
+            <svg {...common} aria-hidden="true">
+                <circle cx="12" cy="12" r="8" />
+                <path d="M12 8v4l3 2" />
+            </svg>
+        );
+    }
+
+    if (kind === 'expenses') {
+        return (
+            <svg {...common} aria-hidden="true">
+                <rect x="4" y="4" width="16" height="16" rx="2" />
+                <path d="M8 8h8" />
+                <path d="M8 12h8" />
+                <path d="M8 16h5" />
+            </svg>
+        );
+    }
+
+    return (
+        <svg {...common} aria-hidden="true">
+            <path d="M4 16V8" />
+            <path d="M10 16V6" />
+            <path d="M16 16v-5" />
+            <path d="M20 8 15.2 3.2 11 7.4 8.2 4.6 4 8.8" />
+        </svg>
+    );
+}
+
 function AdminDashboard() {
     const { user } = useAuth();
     const [data, setData] = useState(null);
@@ -112,7 +156,7 @@ function AdminDashboard() {
 
             <section className="analytics-kpi-row analytics-kpi-row-premium">
                 <div className="analytics-kpi-card kpi-revenue premium-kpi-card">
-                    <div className="kpi-icon">&#128176;</div>
+                    <div className="kpi-icon"><AdminKpiSvg kind="revenue" /></div>
                     <div className="kpi-content">
                         <span className="kpi-value">{L || fmt(data?.total_revenue)}</span>
                         <span className="kpi-label">Total Revenue</span>
@@ -120,7 +164,7 @@ function AdminDashboard() {
                     <span className="kpi-trend kpi-trend-up">{collectionRate.toFixed(1)}% collected</span>
                 </div>
                 <div className="analytics-kpi-card kpi-outstanding premium-kpi-card">
-                    <div className="kpi-icon">&#9201;</div>
+                    <div className="kpi-icon"><AdminKpiSvg kind="outstanding" /></div>
                     <div className="kpi-content">
                         <span className="kpi-value">{L || fmt(data?.total_outstanding)}</span>
                         <span className="kpi-label">Outstanding</span>
@@ -128,7 +172,7 @@ function AdminDashboard() {
                     <span className="kpi-trend kpi-trend-warn">{L || ic.pending || 0} pending</span>
                 </div>
                 <div className="analytics-kpi-card kpi-expenses premium-kpi-card">
-                    <div className="kpi-icon">&#128201;</div>
+                    <div className="kpi-icon"><AdminKpiSvg kind="expenses" /></div>
                     <div className="kpi-content">
                         <span className="kpi-value">{L || fmt(data?.total_expenses)}</span>
                         <span className="kpi-label">Total Expenses</span>
@@ -136,7 +180,7 @@ function AdminDashboard() {
                     <span className="kpi-trend">{L || (data?.expense_categories?.length || 0)} categories</span>
                 </div>
                 <div className={`analytics-kpi-card premium-kpi-card ${(data?.net_profit || 0) >= 0 ? 'kpi-profit' : 'kpi-loss'}`}>
-                    <div className="kpi-icon">{(data?.net_profit || 0) >= 0 ? '+' : '-'}</div>
+                    <div className="kpi-icon"><AdminKpiSvg kind="profit" /></div>
                     <div className="kpi-content">
                         <span className="kpi-value">{L || fmt(data?.net_profit)}</span>
                         <span className="kpi-label">Net Profit</span>
