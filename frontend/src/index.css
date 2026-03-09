@@ -24,14 +24,14 @@
   --bg-surface-alt: #F8F9FA;
   --bg-elevated: #FFFFFF;
 
-  --text-main: #1A1A2E;
-  --text-secondary: #6B7280;
-  --text-muted: #9CA3AF;
+  --text-main: #0F172A;
+  --text-secondary: #475569;
+  --text-muted: #64748B;
   --text-inverted: #FFFFFF;
 
   /* Borders & Shadows — Subtle, premium */
-  --border-light: #F0F0F0;
-  --border-medium: #E5E7EB;
+  --border-light: #E2E8F0;
+  --border-medium: #CBD5E1;
   --border-focus: #1D4ED8;
 
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
