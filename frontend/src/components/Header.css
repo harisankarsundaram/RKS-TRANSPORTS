@@ -95,14 +95,14 @@
   font-weight: 600;
   font-size: 0.9rem;
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 2px 8px rgba(27, 67, 50, 0.15);
+  box-shadow: 0 2px 8px rgba(29, 78, 216, 0.2);
   letter-spacing: 0.01em;
 }
 
 .nav-cta:hover {
   background-color: var(--primary-light);
   transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(27, 67, 50, 0.2);
+  box-shadow: 0 4px 16px rgba(29, 78, 216, 0.28);
 }
 
 .nav-cta::after {
