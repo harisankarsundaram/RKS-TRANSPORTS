@@ -3,6 +3,72 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import apiClient from '../api/client';
 
+const VEHICLE_ROUTE_LABELS = {
+    TRUCK_101: { source: 'Coimbatore', destination: 'Chennai' },
+    TRUCK_102: { source: 'Bangalore', destination: 'Hyderabad' }
+};
+
+function formatEtaMinutes(minutes) {
+    if (!Number.isFinite(minutes)) {
+        return 'No ETA data';
+    }
+
+    if (minutes <= 1) {
+        return 'Arrived';
+    }
+
+    const rounded = Math.max(1, Math.round(minutes));
+    if (rounded < 60) {
+        return `${rounded} min`;
+    }
+
+    const hours = Math.floor(rounded / 60);
+    const mins = rounded % 60;
+    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+}
+
+function getDelayRisk(etaMinutes, status) {
+    if (status !== 'in_progress') {
+        return 'low';
+    }
+
+    if (!Number.isFinite(etaMinutes)) {
+        return 'medium';
+    }
+
+    if (etaMinutes > 240) {
+        return 'high';
+    }
+
+    if (etaMinutes > 120) {
+        return 'medium';
+    }
+
+    return 'low';
+}
+
+function estimateProgressFromRoute(route, currentLatitude, currentLongitude) {
+    if (!Array.isArray(route) || route.length <= 1) {
+        return 0;
+    }
+
+    let bestIndex = 0;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    route.forEach((point, index) => {
+        const dLat = Number(point.latitude) - currentLatitude;
+        const dLng = Number(point.longitude) - currentLongitude;
+        const distance = (dLat * dLat) + (dLng * dLng);
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            bestIndex = index;
+        }
+    });
+
+    const progress = (bestIndex / (route.length - 1)) * 100;
+    return Number(progress.toFixed(1));
+}
+
 function AdminKpiSvg({ kind }) {
     const common = { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' };
 
@@ -70,12 +136,12 @@ function AdminDashboard() {
                     setLoading(true);
                 }
 
-                const [summaryRes, trucksRes, driversRes, notifRes, gpsRes] = await Promise.allSettled([
+                const [summaryRes, trucksRes, driversRes, notifRes, vehiclesRes] = await Promise.allSettled([
                     apiClient.get('/trips/analytics/summary'),
                     apiClient.get('/trucks'),
                     apiClient.get('/drivers'),
                     apiClient.get('/notifications'),
-                    apiClient.get('/gps/fleet/live')
+                    apiClient.get('/vehicles')
                 ]);
 
                 if (cancelled) {
@@ -98,8 +164,102 @@ function AdminDashboard() {
                     setActivity(notifRes.value.data.data.slice(0, 6));
                 }
 
-                if (gpsRes.status === 'fulfilled' && gpsRes.value.data.success) {
-                    setFleetMeta(gpsRes.value.data.data);
+                if (vehiclesRes.status === 'fulfilled' && vehiclesRes.value.data.success) {
+                    const vehicles = vehiclesRes.value.data.data || [];
+                    const detailedFleetSettled = await Promise.allSettled(
+                        vehicles.map(async (vehicle) => {
+                            const [routeRes, progressRes, etaRes] = await Promise.allSettled([
+                                apiClient.get(`/vehicle/${vehicle.vehicleId}/route`),
+                                vehicle.tripId
+                                    ? apiClient.get(`/trip/${vehicle.tripId}/progress`)
+                                    : Promise.resolve(null),
+                                vehicle.tripId
+                                    ? apiClient.get(`/trip/${vehicle.tripId}/eta`)
+                                    : Promise.resolve(null)
+                            ]);
+
+                            const route = routeRes.status === 'fulfilled' && routeRes.value.data.success
+                                ? routeRes.value.data.data.route || []
+                                : [];
+
+                            const progressFromApi =
+                                progressRes.status === 'fulfilled' &&
+                                progressRes.value?.data?.success &&
+                                Number.isFinite(Number(progressRes.value.data.data?.progressPercentage))
+                                    ? Number(progressRes.value.data.data.progressPercentage)
+                                    : estimateProgressFromRoute(route, Number(vehicle.latitude), Number(vehicle.longitude));
+
+                            const etaMinutes =
+                                etaRes.status === 'fulfilled' &&
+                                etaRes.value?.data?.success &&
+                                Number.isFinite(Number(etaRes.value.data.data?.etaMinutes))
+                                    ? Number(etaRes.value.data.data.etaMinutes)
+                                    : null;
+
+                            const source = VEHICLE_ROUTE_LABELS[vehicle.vehicleId]?.source || 'Route Start';
+                            const destination = VEHICLE_ROUTE_LABELS[vehicle.vehicleId]?.destination || 'Route End';
+                            const startPoint = route[0];
+                            const endPoint = route[route.length - 1];
+
+                            return {
+                                trip_id: vehicle.tripId || `IDLE_${vehicle.vehicleId}`,
+                                truck_number: vehicle.vehicleId,
+                                source,
+                                destination,
+                                status: vehicle.status,
+                                start_coord: startPoint
+                                    ? {
+                                        latitude: Number(startPoint.latitude),
+                                        longitude: Number(startPoint.longitude)
+                                    }
+                                    : {
+                                        latitude: Number(vehicle.latitude),
+                                        longitude: Number(vehicle.longitude)
+                                    },
+                                current_coord: {
+                                    latitude: Number(vehicle.latitude),
+                                    longitude: Number(vehicle.longitude)
+                                },
+                                end_coord: endPoint
+                                    ? {
+                                        latitude: Number(endPoint.latitude),
+                                        longitude: Number(endPoint.longitude)
+                                    }
+                                    : {
+                                        latitude: Number(vehicle.latitude),
+                                        longitude: Number(vehicle.longitude)
+                                    },
+                                progress_percent: Number(progressFromApi.toFixed(1)),
+                                speed_kmph: Number((Number(vehicle.speed) || 0).toFixed(1)),
+                                ignition: Boolean(vehicle.ignition),
+                                eta_minutes: etaMinutes,
+                                eta_text: formatEtaMinutes(etaMinutes),
+                                delay_risk: getDelayRisk(etaMinutes, vehicle.status),
+                                last_reported_at: vehicle.timestamp
+                            };
+                        })
+                    );
+
+                    const fleet = detailedFleetSettled
+                        .filter((item) => item.status === 'fulfilled')
+                        .map((item) => item.value)
+                        .filter((vehicle) => vehicle.status === 'in_progress');
+
+                    const etaValues = fleet
+                        .map((item) => item.eta_minutes)
+                        .filter((value) => Number.isFinite(value) && value >= 0);
+
+                    const averageEtaMinutes = etaValues.length
+                        ? etaValues.reduce((sum, value) => sum + value, 0) / etaValues.length
+                        : null;
+
+                    setFleetMeta({
+                        fleet,
+                        running_count: fleet.length,
+                        delayed_count: fleet.filter((vehicle) => vehicle.delay_risk === 'high').length,
+                        average_eta_minutes: averageEtaMinutes !== null ? Number(averageEtaMinutes.toFixed(1)) : null,
+                        average_eta_text: formatEtaMinutes(averageEtaMinutes)
+                    });
                 } else {
                     setFleetMeta({
                         fleet: [],
