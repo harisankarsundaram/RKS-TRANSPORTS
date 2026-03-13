@@ -264,6 +264,16 @@ class MockTrackingProvider {
     getVehicleLocation(vehicleId) {
         this.tickVehicles();
         const vehicle = this.getVehicleOrThrow(vehicleId);
+
+        if (vehicle.currentTripId) {
+            const trip = this.trips.get(vehicle.currentTripId);
+            if (trip && trip.status === 'in_progress') {
+                const now = new Date();
+                this.advanceOnePoint(vehicle, trip, now);
+                trip.lastTickAtMs = now.getTime();
+            }
+        }
+
         const point = this.getCurrentPoint(vehicle);
 
         return {
