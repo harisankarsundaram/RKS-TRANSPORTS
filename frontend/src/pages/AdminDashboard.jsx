@@ -51,33 +51,82 @@ function AdminDashboard() {
     const { user } = useAuth();
     const [data, setData] = useState(null);
     const [fleetStats, setFleetStats] = useState({ trucks: 0, drivers: 0 });
+    const [fleetMeta, setFleetMeta] = useState({
+        fleet: [],
+        running_count: 0,
+        delayed_count: 0,
+        average_eta_minutes: null,
+        average_eta_text: 'No ETA data'
+    });
     const [activity, setActivity] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const fetchAll = async () => {
+        let cancelled = false;
+
+        const fetchAll = async (showLoader = false) => {
             try {
-                const [summaryRes, trucksRes, driversRes, notifRes] = await Promise.all([
+                if (showLoader && !cancelled) {
+                    setLoading(true);
+                }
+
+                const [summaryRes, trucksRes, driversRes, notifRes, gpsRes] = await Promise.allSettled([
                     apiClient.get('/trips/analytics/summary'),
                     apiClient.get('/trucks'),
                     apiClient.get('/drivers'),
-                    apiClient.get('/notifications')
+                    apiClient.get('/notifications'),
+                    apiClient.get('/gps/fleet/live')
                 ]);
 
-                if (summaryRes.data.success) setData(summaryRes.data.data);
+                if (cancelled) {
+                    return;
+                }
 
-                const trucks = trucksRes.data.success ? trucksRes.data.data : [];
-                const drivers = driversRes.data.success ? driversRes.data.data : [];
+                if (summaryRes.status === 'fulfilled' && summaryRes.value.data.success) {
+                    setData(summaryRes.value.data.data);
+                }
+
+                const trucks = trucksRes.status === 'fulfilled' && trucksRes.value.data.success
+                    ? trucksRes.value.data.data
+                    : [];
+                const drivers = driversRes.status === 'fulfilled' && driversRes.value.data.success
+                    ? driversRes.value.data.data
+                    : [];
                 setFleetStats({ trucks: trucks.length, drivers: drivers.length });
 
-                if (notifRes.data.success) setActivity(notifRes.data.data.slice(0, 6));
+                if (notifRes.status === 'fulfilled' && notifRes.value.data.success) {
+                    setActivity(notifRes.value.data.data.slice(0, 6));
+                }
+
+                if (gpsRes.status === 'fulfilled' && gpsRes.value.data.success) {
+                    setFleetMeta(gpsRes.value.data.data);
+                } else {
+                    setFleetMeta({
+                        fleet: [],
+                        running_count: 0,
+                        delayed_count: 0,
+                        average_eta_minutes: null,
+                        average_eta_text: 'No ETA data'
+                    });
+                }
             } catch (error) {
-                console.error('Error fetching dashboard:', error);
+                if (!cancelled) {
+                    console.error('Error fetching dashboard:', error);
+                }
             } finally {
-                setLoading(false);
+                if (showLoader && !cancelled) {
+                    setLoading(false);
+                }
             }
         };
-        fetchAll();
+
+        fetchAll(true);
+        const intervalId = window.setInterval(() => fetchAll(false), 30000);
+
+        return () => {
+            cancelled = true;
+            window.clearInterval(intervalId);
+        };
     }, []);
 
     const fmt = (v) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v || 0);
@@ -106,6 +155,56 @@ function AdminDashboard() {
         return acc;
     }, {});
 
+    const liveFleet = fleetMeta.fleet || [];
+    const liveMapPoints = liveFleet.flatMap((vehicle) => [
+        vehicle.start_coord,
+        vehicle.current_coord,
+        vehicle.end_coord
+    ].filter(Boolean));
+
+    const liveMapBounds = liveMapPoints.length > 0
+        ? liveMapPoints.reduce((acc, point) => ({
+            minLat: Math.min(acc.minLat, point.latitude),
+            maxLat: Math.max(acc.maxLat, point.latitude),
+            minLng: Math.min(acc.minLng, point.longitude),
+            maxLng: Math.max(acc.maxLng, point.longitude)
+        }), {
+            minLat: liveMapPoints[0].latitude,
+            maxLat: liveMapPoints[0].latitude,
+            minLng: liveMapPoints[0].longitude,
+            maxLng: liveMapPoints[0].longitude
+        })
+        : null;
+
+    const projectMapPoint = (point) => {
+        if (!point || !liveMapBounds) {
+            return null;
+        }
+
+        const latRange = Math.max(liveMapBounds.maxLat - liveMapBounds.minLat, 0.1);
+        const lngRange = Math.max(liveMapBounds.maxLng - liveMapBounds.minLng, 0.1);
+
+        const x = 8 + (((point.longitude - liveMapBounds.minLng) / lngRange) * 84);
+        const y = 12 + ((1 - ((point.latitude - liveMapBounds.minLat) / latRange)) * 74);
+
+        return {
+            x: Number(x.toFixed(2)),
+            y: Number(y.toFixed(2))
+        };
+    };
+
+    const getVehicleTone = (delayRisk) => {
+        if (delayRisk === 'high') return 'vehicle-danger';
+        if (delayRisk === 'medium') return 'vehicle-warning';
+        return 'vehicle-info';
+    };
+
+    const getDelayLabel = (delayRisk) => {
+        if (delayRisk === 'high') return 'Delay Risk';
+        if (delayRisk === 'medium') return 'Watch ETA';
+        return 'On Track';
+    };
+
     const monthlyCombined = (data?.monthly_trips || []).map((m) => ({
         month: m.month,
         month_label: m.month_label,
@@ -131,10 +230,14 @@ function AdminDashboard() {
             meta: 'Track expected service completion'
         },
         {
-            level: 'info',
-            title: 'Active Operations',
-            message: `${L || tc.running || 0} trips are currently running`,
-            meta: 'Live GPS module will be integrated next'
+            level: fleetMeta.delayed_count > 0 ? 'warning' : 'info',
+            title: 'Live Tracking',
+            message: liveFleet.length > 0
+                ? `${liveFleet.length} vehicles are reporting live mock GPS positions`
+                : 'No running trips are available for live tracking',
+            meta: liveFleet.length > 0
+                ? `${fleetMeta.average_eta_text} average ETA`
+                : 'Start a running trip to begin mock tracking'
         },
         {
             level: 'neutral',
@@ -210,23 +313,114 @@ function AdminDashboard() {
                 <section className="analytics-card premium-map-panel">
                     <div className="premium-panel-header">
                         <h3 className="analytics-card-title">Live Fleet Tracking</h3>
-                        <span className="premium-badge">GPS module in progress</span>
+                        <span className="premium-badge">{liveFleet.length > 0 ? 'Mock GPS + ETA Live' : 'Awaiting running trips'}</span>
                     </div>
-                    <div className="map-canvas-shell" role="img" aria-label="Live fleet tracking placeholder visualization">
+                    <div className="map-canvas-shell" role="img" aria-label="Live fleet tracking overview with mock GPS positions and ETA forecast">
                         <div className="map-grid-overlay" />
-                        <span className="map-pin pin-a" title="Truck A" />
-                        <span className="map-pin pin-b" title="Truck B" />
-                        <span className="map-pin pin-c" title="Truck C" />
-                        <div className="map-route route-a" />
-                        <div className="map-route route-b" />
-                        <div className="map-route route-c" />
-                        <div className="map-pulse" />
+                        {liveFleet.length > 0 ? (
+                            <>
+                                <svg className="fleet-map-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                                    {liveFleet.map((vehicle) => {
+                                        const start = projectMapPoint(vehicle.start_coord);
+                                        const current = projectMapPoint(vehicle.current_coord);
+                                        const end = projectMapPoint(vehicle.end_coord);
+
+                                        if (!start || !current || !end) {
+                                            return null;
+                                        }
+
+                                        return (
+                                            <g key={`route-${vehicle.trip_id}`}>
+                                                <line className="fleet-route-base" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
+                                                <line className="fleet-route-progress" x1={start.x} y1={start.y} x2={current.x} y2={current.y} />
+                                            </g>
+                                        );
+                                    })}
+                                </svg>
+
+                                {liveFleet.map((vehicle) => {
+                                    const start = projectMapPoint(vehicle.start_coord);
+                                    const current = projectMapPoint(vehicle.current_coord);
+                                    const end = projectMapPoint(vehicle.end_coord);
+
+                                    if (!start || !current || !end) {
+                                        return null;
+                                    }
+
+                                    return (
+                                        <div key={`vehicle-${vehicle.trip_id}`}>
+                                            <span
+                                                className="fleet-endpoint"
+                                                style={{ left: `${start.x}%`, top: `${start.y}%` }}
+                                                title={vehicle.source}
+                                            />
+                                            <span
+                                                className="fleet-endpoint fleet-endpoint--destination"
+                                                style={{ left: `${end.x}%`, top: `${end.y}%` }}
+                                                title={vehicle.destination}
+                                            />
+                                            <div
+                                                className={`fleet-vehicle-pin ${getVehicleTone(vehicle.delay_risk)}`}
+                                                style={{ left: `${current.x}%`, top: `${current.y}%` }}
+                                                title={`${vehicle.truck_number} • ${vehicle.eta_text}`}
+                                            >
+                                                <span className="fleet-vehicle-dot" />
+                                                <div className="fleet-vehicle-label">
+                                                    <strong>{vehicle.truck_number}</strong>
+                                                    <span>{vehicle.eta_text}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </>
+                        ) : (
+                            <div className="fleet-map-empty">
+                                <div>
+                                    <strong>No live fleet positions</strong>
+                                    <p>Start a trip to let the mock GPS engine emit positions and ETA forecasts.</p>
+                                </div>
+                            </div>
+                        )}
                     </div>
                     <div className="map-insight-row">
-                        <div className="map-insight-item"><span>Running Trips</span><strong>{L || tc.running || 0}</strong></div>
-                        <div className="map-insight-item"><span>Available Trucks</span><strong>{L || ts.Available || 0}</strong></div>
-                        <div className="map-insight-item"><span>Planned Trips</span><strong>{L || tc.planned || 0}</strong></div>
+                        <div className="map-insight-item"><span>Running Trips</span><strong>{L || fleetMeta.running_count || 0}</strong></div>
+                        <div className="map-insight-item"><span>Delay Risk</span><strong>{L || fleetMeta.delayed_count || 0}</strong></div>
+                        <div className="map-insight-item"><span>Average ETA</span><strong>{loading ? '—' : fleetMeta.average_eta_text}</strong></div>
                     </div>
+                    {liveFleet.length > 0 && (
+                        <div className="fleet-live-list">
+                            {liveFleet.slice(0, 4).map((vehicle) => (
+                                <article key={`summary-${vehicle.trip_id}`} className="fleet-live-card">
+                                    <div className="fleet-live-card-head">
+                                        <div>
+                                            <strong>{vehicle.truck_number}</strong>
+                                            <div className="fleet-live-card-route">{vehicle.source} → {vehicle.destination}</div>
+                                        </div>
+                                        <span className={`fleet-risk-badge risk-${vehicle.delay_risk}`}>{getDelayLabel(vehicle.delay_risk)}</span>
+                                    </div>
+                                    <div className="fleet-live-metrics">
+                                        <div className="fleet-live-metric">
+                                            <span>Speed</span>
+                                            <strong>{vehicle.speed_kmph} km/h</strong>
+                                        </div>
+                                        <div className="fleet-live-metric">
+                                            <span>Progress</span>
+                                            <strong>{vehicle.progress_percent}%</strong>
+                                        </div>
+                                        <div className="fleet-live-metric">
+                                            <span>ETA</span>
+                                            <strong>{vehicle.eta_text}</strong>
+                                        </div>
+                                    </div>
+                                    <div className="fleet-live-meta">
+                                        <span>{vehicle.ignition ? 'Ignition on' : 'Ignition off'}</span>
+                                        <span>{new Date(vehicle.last_reported_at).toLocaleTimeString()}</span>
+                                    </div>
+                                </article>
+                            ))}
+                        </div>
+                    )}
                 </section>
 
                 <section className="analytics-card premium-alert-panel">
