@@ -11,6 +11,7 @@ const invoiceRoutes = require('./routes/invoiceRoutes');
 const authRoutes = require('./routes/authRoutes');
 const expenseRoutes = require('./routes/expenseRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const mockTrackingRoutes = require('./routes/mockTrackingRoutes');
 
 const errorHandler = require('./middleware/errorHandler');
 
@@ -40,6 +41,7 @@ app.use('/api/invoices', invoiceRoutes);
 app.use('/api', assignmentRoutes);
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api', mockTrackingRoutes);
 
 // 404 handler
 app.use((req, res) => {
