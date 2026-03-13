@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "seed": "node src/scripts/seedAllModules.js"
+    "seed": "node src/scripts/seedAllModules.js",
+    "mock:gps": "node src/mockGpsServer.js",
+    "mock:gps:dev": "node --watch src/mockGpsServer.js"
   },
   "keywords": [
     "truck",
