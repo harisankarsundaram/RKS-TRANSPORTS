@@ -1,8 +1,5 @@
 const GpsModel = require('../models/gpsModel');
 const TripModel = require('../models/tripModel');
-const DriverModel = require('../models/driverModel');
-const EtaService = require('../services/etaService');
-const MockGpsService = require('../services/mockGpsService');
 
 // Haversine Formula for distance in KM
 function calculateDistance(lat1, lon1, lat2, lon2) {
@@ -97,92 +94,17 @@ const GpsController = {
                 await TripModel.updateDistance(trip_id, distanceSegment);
             }
 
-            const refreshedTrip = await TripModel.getById(trip_id);
-            const liveView = await MockGpsService.getTripLiveView(refreshedTrip, { force: false });
+            const currentLocation = await GpsModel.getLastLocation(trip_id);
 
             res.json({
                 success: true,
                 message: 'GPS logged',
                 data: {
                     added_distance_km: Number(distanceSegment.toFixed(3)),
-                    live_view: liveView
+                    current_location: currentLocation
                 }
             });
 
-        } catch (error) {
-            next(error);
-        }
-    },
-
-    async getLiveFleetSnapshot(req, res, next) {
-        try {
-            const fleet = await MockGpsService.syncRunningTrips({
-                force: req.query.force === 'true'
-            });
-
-            const etaValues = fleet
-                .map(item => item.eta_minutes)
-                .filter(value => Number.isFinite(value) && value >= 0);
-
-            const averageEtaMinutes = etaValues.length
-                ? etaValues.reduce((sum, value) => sum + value, 0) / etaValues.length
-                : null;
-
-            const delayedCount = fleet.filter(item => item.delay_risk === 'high').length;
-
-            res.json({
-                success: true,
-                data: {
-                    refreshed_at: new Date().toISOString(),
-                    running_count: fleet.length,
-                    delayed_count: delayedCount,
-                    average_eta_minutes: averageEtaMinutes !== null ? Number(averageEtaMinutes.toFixed(1)) : null,
-                    average_eta_text: averageEtaMinutes !== null ? EtaService.formatEtaMinutes(averageEtaMinutes) : 'No ETA data',
-                    fleet
-                }
-            });
-        } catch (error) {
-            next(error);
-        }
-    },
-
-    async getTripLiveSnapshot(req, res, next) {
-        try {
-            const { tripId } = req.params;
-            const trip = await TripModel.getById(tripId);
-
-            if (!trip) {
-                return res.status(404).json({ success: false, message: 'Trip not found' });
-            }
-
-            if (req.user.role === 'driver') {
-                const driver = await DriverModel.getByUserId(req.user.id);
-                if (!driver || driver.driver_id !== trip.driver_id) {
-                    return res.status(403).json({ success: false, message: 'You can only view live GPS for your own trips' });
-                }
-            }
-
-            const liveView = await MockGpsService.getTripLiveView(trip, {
-                force: req.query.force === 'true' && req.user.role !== 'driver'
-            });
-
-            res.json({ success: true, data: liveView });
-        } catch (error) {
-            next(error);
-        }
-    },
-
-    async runMockTick(req, res, next) {
-        try {
-            const tripId = req.body.trip_id ? Number(req.body.trip_id) : null;
-            const fleet = await MockGpsService.syncRunningTrips({ tripId, force: true });
-
-            res.json({
-                success: true,
-                message: 'Mock GPS tick executed successfully',
-                count: fleet.length,
-                data: fleet
-            });
         } catch (error) {
             next(error);
         }
