@@ -92,6 +92,7 @@ async function initDatabase() {
         `);
 
         const tripAlterColumns = [
+            { name: 'gps_distance_km', type: 'NUMERIC(12,2) DEFAULT 0' },
             { name: 'base_freight', type: 'NUMERIC(12,2) DEFAULT 0' },
             { name: 'toll_amount', type: 'NUMERIC(12,2) DEFAULT 0' },
             { name: 'loading_cost', type: 'NUMERIC(12,2) DEFAULT 0' },
@@ -144,9 +145,13 @@ async function initDatabase() {
                 trip_id INTEGER REFERENCES trips(trip_id) ON DELETE CASCADE,
                 latitude DECIMAL(10,7) NOT NULL,
                 longitude DECIMAL(10,7) NOT NULL,
+                speed_kmph NUMERIC(10,2) DEFAULT 0,
+                ignition BOOLEAN DEFAULT TRUE,
                 recorded_at TIMESTAMP DEFAULT NOW()
             )
         `);
+        await client.query('ALTER TABLE gps_logs ADD COLUMN IF NOT EXISTS speed_kmph NUMERIC(10,2) DEFAULT 0');
+        await client.query('ALTER TABLE gps_logs ADD COLUMN IF NOT EXISTS ignition BOOLEAN DEFAULT TRUE');
 
         // Create fuel_logs table
         await client.query(`
@@ -214,6 +219,7 @@ async function initDatabase() {
         await client.query('CREATE INDEX IF NOT EXISTS idx_trips_driver_id ON trips(driver_id)');
         await client.query('CREATE INDEX IF NOT EXISTS idx_trips_status ON trips(status)');
         await client.query('CREATE INDEX IF NOT EXISTS idx_gps_logs_trip_id ON gps_logs(trip_id)');
+        await client.query('CREATE INDEX IF NOT EXISTS idx_gps_logs_recorded_at ON gps_logs(recorded_at)');
         await client.query('CREATE INDEX IF NOT EXISTS idx_fuel_logs_trip_id ON fuel_logs(trip_id)');
         await client.query('CREATE INDEX IF NOT EXISTS idx_expenses_trip_id ON expenses(trip_id)');
         await client.query('CREATE INDEX IF NOT EXISTS idx_expenses_truck_id ON expenses(truck_id)');
