@@ -108,11 +108,19 @@ const TripModel = {
         return result.rowCount > 0;
     },
 
-    // Update Distance (from GPS)
+    // Update tracked GPS distance without mutating the planned trip distance
     async updateDistance(tripId, addedDistance) {
         const result = await pool.query(
-            `UPDATE trips SET distance_km = distance_km + $1 WHERE trip_id = $2`,
+            `UPDATE trips SET gps_distance_km = COALESCE(gps_distance_km, 0) + $1 WHERE trip_id = $2`,
             [addedDistance, tripId]
+        );
+        return result.rowCount > 0;
+    },
+
+    async setGpsDistance(tripId, distanceKm) {
+        const result = await pool.query(
+            `UPDATE trips SET gps_distance_km = $1 WHERE trip_id = $2`,
+            [distanceKm, tripId]
         );
         return result.rowCount > 0;
     },
@@ -271,6 +279,38 @@ const TripModel = {
     },
 
     // Get trip analytics (enhanced with financial data)
+    async getRouteHistoricalStats(source, destination) {
+        const result = await pool.query(
+            `SELECT
+                COUNT(*) as completed_runs,
+                COALESCE(AVG(EXTRACT(EPOCH FROM (end_time - start_time)) / 3600), 0) as avg_duration_hours,
+                COALESCE(
+                    AVG(
+                        CASE
+                            WHEN end_time IS NOT NULL
+                             AND start_time IS NOT NULL
+                             AND EXTRACT(EPOCH FROM (end_time - start_time)) > 0
+                            THEN distance_km / (EXTRACT(EPOCH FROM (end_time - start_time)) / 3600)
+                        END
+                    ),
+                    0
+                ) as avg_speed_kmh
+             FROM trips
+             WHERE status = 'Completed'
+               AND source = $1
+               AND destination = $2
+               AND start_time IS NOT NULL
+               AND end_time IS NOT NULL`,
+            [source, destination]
+        );
+
+        return result.rows[0] || {
+            completed_runs: 0,
+            avg_duration_hours: 0,
+            avg_speed_kmh: 0
+        };
+    },
+
     async getTripAnalytics(filters = {}) {
         let query = `
             SELECT 
