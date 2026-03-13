@@ -29,6 +29,13 @@ const errorHandler = (err, req, res, next) => {
         });
     }
 
+    if (err.status && Number.isInteger(err.status)) {
+        return res.status(err.status).json({
+            success: false,
+            message: err.message || 'Request failed'
+        });
+    }
+
     // Default server error
     res.status(500).json({
         success: false,
