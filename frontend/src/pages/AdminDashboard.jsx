@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import apiClient from '../api/client';
@@ -291,7 +291,7 @@ function AdminDashboard() {
 
     const fmt = (v) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v || 0);
     const num = (v) => new Intl.NumberFormat('en-IN').format(v || 0);
-    const L = loading ? '—' : null;
+    const L = loading ? '-' : null;
 
     const tc = data?.trip_counts || {};
     const ts = data?.truck_status || {};
@@ -522,7 +522,7 @@ function AdminDashboard() {
                                             <div
                                                 className={`fleet-vehicle-pin ${getVehicleTone(vehicle.delay_risk)}`}
                                                 style={{ left: `${current.x}%`, top: `${current.y}%` }}
-                                                title={`${vehicle.truck_number} • ${vehicle.eta_text}`}
+                                                title={`${vehicle.truck_number} | ${vehicle.eta_text}`}
                                             >
                                                 <span className="fleet-vehicle-dot" />
                                                 <div className="fleet-vehicle-label">
@@ -546,7 +546,7 @@ function AdminDashboard() {
                     <div className="map-insight-row">
                         <div className="map-insight-item"><span>Running Trips</span><strong>{L || fleetMeta.running_count || 0}</strong></div>
                         <div className="map-insight-item"><span>Delay Risk</span><strong>{L || fleetMeta.delayed_count || 0}</strong></div>
-                        <div className="map-insight-item"><span>Average ETA</span><strong>{loading ? '—' : fleetMeta.average_eta_text}</strong></div>
+                        <div className="map-insight-item"><span>Average ETA</span><strong>{loading ? '-' : fleetMeta.average_eta_text}</strong></div>
                     </div>
                     {liveFleet.length > 0 && (
                         <div className="fleet-live-list">
@@ -555,7 +555,7 @@ function AdminDashboard() {
                                     <div className="fleet-live-card-head">
                                         <div>
                                             <strong>{vehicle.truck_number}</strong>
-                                            <div className="fleet-live-card-route">{vehicle.source} → {vehicle.destination}</div>
+                                            <div className="fleet-live-card-route">{vehicle.source}{' -> '}{vehicle.destination}</div>
                                         </div>
                                         <span className={`fleet-risk-badge risk-${vehicle.delay_risk}`}>{getDelayLabel(vehicle.delay_risk)}</span>
                                     </div>
@@ -621,7 +621,7 @@ function AdminDashboard() {
                                         <tr key={trip.trip_id}>
                                             <td>{trip.end_time ? new Date(trip.end_time).toLocaleString() : '-'}</td>
                                             <td>Trip Completed</td>
-                                            <td>{trip.lr_number} ({trip.source} → {trip.destination})</td>
+                                            <td>{trip.lr_number} ({trip.source}{' -> '}{trip.destination})</td>
                                             <td><span className="status-chip status-ok">Confirmed</span></td>
                                         </tr>
                                     ))
@@ -802,7 +802,7 @@ function AdminDashboard() {
                                 <div key={i} className="route-row">
                                     <span className="route-rank">#{i + 1}</span>
                                     <div className="route-info">
-                                        <span className="route-path">{r.source} → {r.destination}</span>
+                                        <span className="route-path">{r.source}{' -> '}{r.destination}</span>
                                         <span className="route-meta">{r.trip_count} trips &middot; {fmt(r.total_revenue)}</span>
                                     </div>
                                 </div>
@@ -839,7 +839,7 @@ function AdminDashboard() {
                                 <div key={t.trip_id} className="recent-trip-row">
                                     <div className="recent-trip-info">
                                         <strong>{t.lr_number}</strong>
-                                        <span>{t.source} → {t.destination}</span>
+                                        <span>{t.source}{' -> '}{t.destination}</span>
                                     </div>
                                     <div className="recent-trip-meta">
                                         <span className="recent-trip-amount">{fmt(t.base_freight)}</span>
