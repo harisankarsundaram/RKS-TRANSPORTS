@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import '../pages/Dashboard.css';
 
 function DashboardLayout({ role }) {
-    const { user, logout } = useAuth();
+    const { logout } = useAuth();
     const navigate = useNavigate();
 
     const handleLogout = () => {
@@ -27,7 +27,10 @@ function DashboardLayout({ role }) {
                     {role === 'admin' ? (
                         <>
                             <NavLink to="/dashboard/admin" end className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-                                <span>Overview</span>
+                                <span>Normal Dashboard</span>
+                            </NavLink>
+                            <NavLink to="/dashboard/admin/intelligence" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+                                <span>Intelligence Dashboard</span>
                             </NavLink>
                             <NavLink to="/lorries" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
                                 <span>Lorry Management</span>
@@ -43,6 +46,9 @@ function DashboardLayout({ role }) {
                             </NavLink>
                             <NavLink to="/maintenance" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
                                 <span>Maintenance</span>
+                            </NavLink>
+                            <NavLink to="/bookings" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+                                <span>Customer Bookings</span>
                             </NavLink>
 
                             <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border-light)' }}>
