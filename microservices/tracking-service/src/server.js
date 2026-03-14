@@ -1,0 +1,190 @@
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const pool = require('./db');
+
+const app = express();
+const PORT = process.env.PORT || 3105;
+
+app.use(cors());
+app.use(express.json());
+
+function toRadians(deg) {
+    return (deg * Math.PI) / 180;
+}
+
+function distanceKm(start, end) {
+    const dLat = toRadians(end.latitude - start.latitude);
+    const dLon = toRadians(end.longitude - start.longitude);
+    const lat1 = toRadians(start.latitude);
+    const lat2 = toRadians(end.latitude);
+
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1) * Math.cos(lat2);
+
+    return 6371 * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+function sumSegmentDistance(points) {
+    if (!Array.isArray(points) || points.length < 2) {
+        return 0;
+    }
+
+    let sum = 0;
+    for (let i = 1; i < points.length; i += 1) {
+        sum += distanceKm(points[i - 1], points[i]);
+    }
+    return sum;
+}
+
+function normalizePolyline(rawPolyline) {
+    if (!rawPolyline) {
+        return [];
+    }
+
+    try {
+        const parsed = JSON.parse(rawPolyline);
+        if (!Array.isArray(parsed)) {
+            return [];
+        }
+
+        return parsed
+            .map((point) => {
+                if (Array.isArray(point) && point.length >= 2) {
+                    return { longitude: Number(point[0]), latitude: Number(point[1]) };
+                }
+                if (point && point.longitude !== undefined && point.latitude !== undefined) {
+                    return { longitude: Number(point.longitude), latitude: Number(point.latitude) };
+                }
+                return null;
+            })
+            .filter(Boolean);
+    } catch (error) {
+        return [];
+    }
+}
+
+async function ensureSchema() {
+    await pool.query('ALTER TABLE trips ADD COLUMN IF NOT EXISTS route_polyline TEXT');
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS trip_routes (
+            trip_id INTEGER PRIMARY KEY REFERENCES trips(trip_id) ON DELETE CASCADE,
+            route_polyline TEXT NOT NULL,
+            distance NUMERIC(10,2) NOT NULL,
+            estimated_time NUMERIC(10,2) NOT NULL,
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+    `);
+}
+
+app.get('/health', async (req, res) => {
+    try {
+        await pool.query('SELECT 1');
+        res.json({ status: 'OK', service: 'tracking-service', timestamp: new Date().toISOString() });
+    } catch (error) {
+        res.status(500).json({ status: 'ERROR', message: error.message });
+    }
+});
+
+app.get('/tracking/live', async (req, res) => {
+    try {
+        const latest = await pool.query(`
+            SELECT DISTINCT ON (g.truck_id)
+                g.gps_id,
+                g.truck_id,
+                t.trip_id,
+                t.source,
+                t.destination,
+                t.status AS trip_status,
+                tr.truck_number,
+                g.latitude,
+                g.longitude,
+                COALESCE(g.speed_kmph, 0) AS speed,
+                COALESCE(g.recorded_at, NOW()) AS timestamp
+            FROM gps_logs g
+            LEFT JOIN trips t ON t.trip_id = g.trip_id
+            LEFT JOIN trucks tr ON tr.truck_id = g.truck_id
+            ORDER BY g.truck_id, g.recorded_at DESC
+        `);
+
+        return res.json({ success: true, count: latest.rows.length, data: latest.rows });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.get('/tracking/trip/:tripId', async (req, res) => {
+    const tripId = Number(req.params.tripId);
+
+    try {
+        const [tripResult, logResult] = await Promise.all([
+            pool.query(
+                `SELECT t.*, tr.route_polyline AS route_polyline_table, tr.distance AS route_distance
+                 FROM trips t
+                 LEFT JOIN trip_routes tr ON tr.trip_id = t.trip_id
+                 WHERE t.trip_id = $1`,
+                [tripId]
+            ),
+            pool.query(
+                `SELECT latitude, longitude, COALESCE(speed_kmph, 0) AS speed, recorded_at
+                 FROM gps_logs
+                 WHERE trip_id = $1
+                 ORDER BY recorded_at ASC`,
+                [tripId]
+            )
+        ]);
+
+        if (tripResult.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Trip not found' });
+        }
+
+        const trip = tripResult.rows[0];
+        const logs = logResult.rows.map((row) => ({
+            latitude: Number(row.latitude),
+            longitude: Number(row.longitude),
+            speed: Number(row.speed),
+            timestamp: row.recorded_at
+        }));
+
+        const routePolyline = normalizePolyline(trip.route_polyline_table || trip.route_polyline);
+        const routeDistance = routePolyline.length > 1
+            ? sumSegmentDistance(routePolyline)
+            : Number(trip.route_distance || trip.distance_km || 0);
+
+        const travelledDistance = sumSegmentDistance(logs);
+        const progress = routeDistance > 0
+            ? Math.min(1, travelledDistance / routeDistance)
+            : 0;
+
+        return res.json({
+            success: true,
+            data: {
+                trip_id: trip.trip_id,
+                truck_id: trip.truck_id,
+                source: trip.source,
+                destination: trip.destination,
+                status: trip.status,
+                route: routePolyline,
+                gps_logs: logs,
+                distance_travelled_km: Number(travelledDistance.toFixed(3)),
+                total_route_distance_km: Number(routeDistance.toFixed(3)),
+                progress: Number(progress.toFixed(4)),
+                progress_percent: Number((progress * 100).toFixed(2))
+            }
+        });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+ensureSchema()
+    .then(() => {
+        app.listen(PORT, () => {
+            console.log(`tracking-service running on port ${PORT}`);
+        });
+    })
+    .catch((error) => {
+        console.error('tracking-service startup failed:', error);
+        process.exit(1);
+    });
