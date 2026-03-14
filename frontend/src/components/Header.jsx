@@ -7,11 +7,6 @@ function Header() {
   const [scrolled, setScrolled] = useState(false)
   const location = useLocation()
 
-  // Close menu when route changes
-  useEffect(() => {
-    setMenuOpen(false)
-  }, [location])
-
   // Handle scroll effect
   useEffect(() => {
     const handleScroll = () => {
@@ -70,6 +65,7 @@ function Header() {
 
             <a href="/#about" onClick={scrollToAbout} className="nav-link">About</a>
             <NavLink to="/contact" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>Contact</NavLink>
+            <NavLink to="/bookings" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>Book Truck</NavLink>
             <NavLink to="/dashboard" className="nav-cta">Dashboard</NavLink>
           </div>
         </nav>
