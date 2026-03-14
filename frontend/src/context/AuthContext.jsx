@@ -1,30 +1,50 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useState, useContext, useEffect } from 'react';
 import apiClient from '../api/client';
+import { setMicroserviceAuthToken } from '../api/microserviceClients';
 import { useNavigate } from 'react-router-dom';
 
 const AuthContext = createContext(null);
 
+function getStoredAuth() {
+    if (typeof window === 'undefined') {
+        return { token: null, user: null };
+    }
+
+    const token = localStorage.getItem('token');
+    const storedUser = localStorage.getItem('user');
+
+    if (!token || !storedUser) {
+        return { token: null, user: null };
+    }
+
+    try {
+        const parsedUser = JSON.parse(storedUser);
+        if (parsedUser.user_id && !parsedUser.id) {
+            parsedUser.id = parsedUser.user_id;
+        }
+
+        return { token, user: parsedUser };
+    } catch {
+        return { token: null, user: null };
+    }
+}
+
 export const AuthProvider = ({ children }) => {
-    const [user, setUser] = useState(null);
-    const [loading, setLoading] = useState(true);
+    const [initialAuth] = useState(() => getStoredAuth());
+    const [user, setUser] = useState(initialAuth.user);
+    const [loading] = useState(false);
     const navigate = useNavigate();
 
     useEffect(() => {
-        // Check for existing token
-        const token = localStorage.getItem('token');
-        const storedUser = localStorage.getItem('user');
-
-        if (token && storedUser) {
-            const parsedUser = JSON.parse(storedUser);
-            // Ensure backward compatibility with id/user_id
-            if (parsedUser.user_id && !parsedUser.id) {
-                parsedUser.id = parsedUser.user_id;
-            }
-            setUser(parsedUser);
-            apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        if (initialAuth.token) {
+            apiClient.defaults.headers.common.Authorization = `Bearer ${initialAuth.token}`;
+            setMicroserviceAuthToken(initialAuth.token);
+        } else {
+            delete apiClient.defaults.headers.common.Authorization;
+            setMicroserviceAuthToken(null);
         }
-        setLoading(false);
-    }, []);
+    }, [initialAuth.token]);
 
     const login = async (email, password) => {
         try {
@@ -37,6 +57,7 @@ export const AuthProvider = ({ children }) => {
                 localStorage.setItem('user', JSON.stringify(user));
 
                 apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+                setMicroserviceAuthToken(token);
                 setUser(user);
                 return { success: true };
             }
@@ -64,6 +85,7 @@ export const AuthProvider = ({ children }) => {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         delete apiClient.defaults.headers.common['Authorization'];
+        setMicroserviceAuthToken(null);
         setUser(null);
         navigate('/');
     };
