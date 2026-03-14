@@ -1,0 +1,119 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: rks-postgres
+    environment:
+      POSTGRES_DB: rks_logistics
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  auth-service:
+    build: ./auth-service
+    container_name: auth-service
+    environment:
+      PORT: 3101
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/rks_logistics
+      JWT_SECRET: change_this_secret
+    depends_on:
+      - postgres
+    ports:
+      - "3101:3101"
+
+  fleet-service:
+    build: ./fleet-service
+    container_name: fleet-service
+    environment:
+      PORT: 3102
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/rks_logistics
+    depends_on:
+      - postgres
+    ports:
+      - "3102:3102"
+
+  trip-service:
+    build: ./trip-service
+    container_name: trip-service
+    environment:
+      PORT: 3103
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/rks_logistics
+    depends_on:
+      - postgres
+    ports:
+      - "3103:3103"
+
+  booking-service:
+    build: ./booking-service
+    container_name: booking-service
+    environment:
+      PORT: 3104
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/rks_logistics
+      TRIP_SERVICE_URL: http://trip-service:3103
+    depends_on:
+      - postgres
+      - trip-service
+    ports:
+      - "3104:3104"
+
+  tracking-service:
+    build: ./tracking-service
+    container_name: tracking-service
+    environment:
+      PORT: 3105
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/rks_logistics
+    depends_on:
+      - postgres
+    ports:
+      - "3105:3105"
+
+  mock-gps-service:
+    build: ./mock-gps-service
+    container_name: mock-gps-service
+    environment:
+      PORT: 3106
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/rks_logistics
+      MOCK_GPS_TICK_MS: 5000
+    depends_on:
+      - postgres
+    ports:
+      - "3106:3106"
+
+  analytics-service:
+    build: ./analytics-service
+    container_name: analytics-service
+    environment:
+      PORT: 3107
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/rks_logistics
+    depends_on:
+      - postgres
+    ports:
+      - "3107:3107"
+
+  ml-service:
+    build: ./ml-service
+    container_name: ml-service
+    environment:
+      PYTHONUNBUFFERED: 1
+    ports:
+      - "8000:8000"
+
+  alert-service:
+    build: ./alert-service
+    container_name: alert-service
+    environment:
+      PORT: 3108
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/rks_logistics
+      ML_SERVICE_URL: http://ml-service:8000
+    depends_on:
+      - postgres
+      - ml-service
+    ports:
+      - "3108:3108"
+
+volumes:
+  postgres_data:
