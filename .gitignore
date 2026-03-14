@@ -1,0 +1,13 @@
+# Dependencies
+**/node_modules/
+
+# Frontend and build artifacts
+**/dist/
+
+# Python environments
+**/.venv/
+**/__pycache__/
+*.pyc
+
+# Logs
+*.log
