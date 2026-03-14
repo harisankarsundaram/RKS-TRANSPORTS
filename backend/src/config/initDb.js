@@ -74,6 +74,19 @@ async function initDatabase() {
             )
         `);
 
+        await client.query('ALTER TABLE trips ADD COLUMN IF NOT EXISTS route_polyline TEXT');
+        await client.query('ALTER TABLE trips ADD COLUMN IF NOT EXISTS planned_arrival_time TIMESTAMP');
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS trip_routes (
+                trip_id INTEGER PRIMARY KEY REFERENCES trips(trip_id) ON DELETE CASCADE,
+                route_polyline TEXT NOT NULL,
+                distance NUMERIC(10,2) NOT NULL,
+                estimated_time NUMERIC(10,2) NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
         // ── Financial Enhancement: ALTER trips table with new columns ──
         // 1️⃣ Rename freight_amount to base_freight if it exists
         await client.query(`
@@ -164,6 +177,57 @@ async function initDatabase() {
                 created_at TIMESTAMP DEFAULT NOW()
             )
         `);
+        await client.query('ALTER TABLE fuel_logs ADD COLUMN IF NOT EXISTS truck_id INTEGER REFERENCES trucks(truck_id)');
+        await client.query('ALTER TABLE fuel_logs ADD COLUMN IF NOT EXISTS fuel_filled NUMERIC(10,2)');
+        await client.query('ALTER TABLE fuel_logs ADD COLUMN IF NOT EXISTS odometer_reading NUMERIC(12,2)');
+        await client.query('ALTER TABLE fuel_logs ADD COLUMN IF NOT EXISTS timestamp TIMESTAMP DEFAULT NOW()');
+        await client.query('UPDATE fuel_logs SET fuel_filled = COALESCE(fuel_filled, liters)');
+        await client.query('UPDATE fuel_logs SET timestamp = COALESCE(timestamp, created_at, NOW())');
+
+        // Keep legacy and microservice fuel schema aligned
+        await client.query(`
+            UPDATE fuel_logs f
+            SET truck_id = t.truck_id
+            FROM trips t
+            WHERE f.trip_id = t.trip_id
+              AND f.truck_id IS NULL
+        `);
+
+        // Create booking requests table for customer portal
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS booking_requests (
+                id SERIAL PRIMARY KEY,
+                customer_name VARCHAR(120) NOT NULL,
+                contact_number VARCHAR(20) NOT NULL,
+                pickup_location VARCHAR(255) NOT NULL,
+                destination VARCHAR(255) NOT NULL,
+                load_type VARCHAR(120) NOT NULL,
+                weight NUMERIC(10,2) NOT NULL,
+                pickup_date DATE NOT NULL,
+                delivery_deadline DATE NOT NULL,
+                offered_price NUMERIC(12,2) NOT NULL,
+                status VARCHAR(30) DEFAULT 'pending',
+                pickup_latitude NUMERIC(10,7),
+                pickup_longitude NUMERIC(10,7),
+                destination_latitude NUMERIC(10,7),
+                destination_longitude NUMERIC(10,7),
+                approved_trip_id INTEGER REFERENCES trips(trip_id) ON DELETE SET NULL,
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        // Create operational alerts table
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS alerts (
+                id SERIAL PRIMARY KEY,
+                truck_id INTEGER REFERENCES trucks(truck_id),
+                trip_id INTEGER REFERENCES trips(trip_id) ON DELETE CASCADE,
+                alert_type VARCHAR(50) NOT NULL,
+                description TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
 
         // Create maintenance table
         await client.query(`
@@ -218,9 +282,16 @@ async function initDatabase() {
         await client.query('CREATE INDEX IF NOT EXISTS idx_trips_truck_id ON trips(truck_id)');
         await client.query('CREATE INDEX IF NOT EXISTS idx_trips_driver_id ON trips(driver_id)');
         await client.query('CREATE INDEX IF NOT EXISTS idx_trips_status ON trips(status)');
+        await client.query('CREATE INDEX IF NOT EXISTS idx_trip_routes_distance ON trip_routes(distance)');
         await client.query('CREATE INDEX IF NOT EXISTS idx_gps_logs_trip_id ON gps_logs(trip_id)');
         await client.query('CREATE INDEX IF NOT EXISTS idx_gps_logs_recorded_at ON gps_logs(recorded_at)');
         await client.query('CREATE INDEX IF NOT EXISTS idx_fuel_logs_trip_id ON fuel_logs(trip_id)');
+        await client.query('CREATE INDEX IF NOT EXISTS idx_fuel_logs_truck_id ON fuel_logs(truck_id)');
+        await client.query('CREATE INDEX IF NOT EXISTS idx_fuel_logs_timestamp ON fuel_logs(timestamp)');
+        await client.query('CREATE INDEX IF NOT EXISTS idx_booking_requests_status ON booking_requests(status)');
+        await client.query('CREATE INDEX IF NOT EXISTS idx_booking_requests_pickup_date ON booking_requests(pickup_date)');
+        await client.query('CREATE INDEX IF NOT EXISTS idx_alerts_trip_id ON alerts(trip_id)');
+        await client.query('CREATE INDEX IF NOT EXISTS idx_alerts_type ON alerts(alert_type)');
         await client.query('CREATE INDEX IF NOT EXISTS idx_expenses_trip_id ON expenses(trip_id)');
         await client.query('CREATE INDEX IF NOT EXISTS idx_expenses_truck_id ON expenses(truck_id)');
         await client.query('CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses(category)');
