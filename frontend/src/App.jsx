@@ -6,7 +6,9 @@ import DashboardLayout from './components/DashboardLayout'
 import Home from './pages/Home'
 import OwnerAuth from './pages/OwnerAuth'
 import Contact from './pages/Contact'
+import BookingPortal from './pages/BookingPortal'
 import AdminDashboard from './pages/AdminDashboard'
+import IntelligenceDashboard from './pages/IntelligenceDashboard'
 import DriverDashboard from './pages/DriverDashboard'
 import LorryManagement from './pages/LorryManagement'
 import DriverManagement from './pages/DriverManagement'
@@ -33,6 +35,7 @@ function App() {
         <Route index element={<Home />} />
         <Route path="owner" element={<OwnerAuth />} />
         <Route path="contact" element={<Contact />} />
+        <Route path="bookings" element={<BookingPortal />} />
         <Route path="dashboard" element={<DashboardRedirect />} />
       </Route>
 
@@ -40,6 +43,7 @@ function App() {
       <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
         <Route element={<DashboardLayout role="admin" />}>
           <Route path="dashboard/admin" element={<AdminDashboard />} />
+          <Route path="dashboard/admin/intelligence" element={<IntelligenceDashboard />} />
           <Route path="lorries" element={<LorryManagement />} />
           <Route path="drivers" element={<DriverManagement />} />
           <Route path="trips" element={<TripManagement />} />
