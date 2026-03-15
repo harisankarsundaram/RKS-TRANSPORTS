@@ -315,16 +315,16 @@ const TripModel = {
         let query = `
             SELECT 
                 COUNT(*) as total_trips,
-                COUNT(CASE WHEN t.status = 'Completed' THEN 1 END) as completed_trips,
-                COUNT(CASE WHEN t.status = 'Running' THEN 1 END) as running_trips,
-                COUNT(CASE WHEN t.status = 'Planned' THEN 1 END) as planned_trips,
-                COUNT(CASE WHEN t.status = 'Cancelled' THEN 1 END) as cancelled_trips,
-                COALESCE(SUM(CASE WHEN t.status = 'Completed' THEN t.base_freight ELSE 0 END), 0) as total_base_revenue,
-                COALESCE(SUM(CASE WHEN t.status = 'Completed' THEN t.distance_km ELSE 0 END), 0) as total_distance,
-                COALESCE(AVG(CASE WHEN t.status = 'Completed' THEN t.base_freight END), 0) as average_base_freight,
-                COALESCE(AVG(CASE WHEN t.status = 'Completed' THEN t.distance_km END), 0) as average_distance,
+                COUNT(CASE WHEN LOWER(t.status) = 'completed' THEN 1 END) as completed_trips,
+                COUNT(CASE WHEN LOWER(t.status) IN ('running', 'in_progress') THEN 1 END) as running_trips,
+                COUNT(CASE WHEN LOWER(t.status) = 'planned' THEN 1 END) as planned_trips,
+                COUNT(CASE WHEN LOWER(t.status) = 'cancelled' THEN 1 END) as cancelled_trips,
+                COALESCE(SUM(CASE WHEN LOWER(t.status) = 'completed' THEN t.base_freight ELSE 0 END), 0) as total_base_revenue,
+                COALESCE(SUM(CASE WHEN LOWER(t.status) = 'completed' THEN t.distance_km ELSE 0 END), 0) as total_distance,
+                COALESCE(AVG(CASE WHEN LOWER(t.status) = 'completed' THEN t.base_freight END), 0) as average_base_freight,
+                COALESCE(AVG(CASE WHEN LOWER(t.status) = 'completed' THEN t.distance_km END), 0) as average_distance,
                 COALESCE(AVG(
-                    CASE WHEN t.status = 'Completed' AND (t.empty_km + t.loaded_km) > 0 
+                    CASE WHEN LOWER(t.status) = 'completed' AND (t.empty_km + t.loaded_km) > 0 
                     THEN (t.empty_km / (t.empty_km + t.loaded_km)) * 100 
                     END
                 ), 0) as avg_dead_mileage_pct
@@ -365,17 +365,41 @@ const TripModel = {
     // Monthly trip trends (last 6 months)
     async getMonthlyTrends() {
         const result = await pool.query(`
-            SELECT 
-                TO_CHAR(created_at, 'YYYY-MM') as month,
-                TO_CHAR(created_at, 'Mon') as month_label,
-                COUNT(*) as trips,
-                COUNT(CASE WHEN status = 'Completed' THEN 1 END) as completed,
-                COALESCE(SUM(CASE WHEN status = 'Completed' THEN base_freight ELSE 0 END), 0) as revenue,
-                COALESCE(SUM(CASE WHEN status = 'Completed' THEN distance_km ELSE 0 END), 0) as distance
-            FROM trips
-            WHERE created_at >= NOW() - INTERVAL '6 months'
-            GROUP BY TO_CHAR(created_at, 'YYYY-MM'), TO_CHAR(created_at, 'Mon')
-            ORDER BY month
+            WITH month_bucket AS (
+                SELECT (DATE_TRUNC('month', NOW()) - make_interval(months => gs.offset))::date AS month_start
+                FROM generate_series(5, 0, -1) AS gs(offset)
+            ),
+            trip_agg AS (
+                SELECT
+                    DATE_TRUNC('month', t.created_at)::date AS month_start,
+                    COUNT(*) AS trips,
+                    COUNT(*) FILTER (WHERE LOWER(t.status) = 'completed') AS completed,
+                    COALESCE(SUM(
+                        CASE WHEN LOWER(t.status) = 'completed' THEN COALESCE(t.distance_km, 0) ELSE 0 END
+                    ), 0) AS distance
+                FROM trips t
+                WHERE t.created_at >= DATE_TRUNC('month', NOW()) - INTERVAL '5 months'
+                GROUP BY DATE_TRUNC('month', t.created_at)::date
+            ),
+            invoice_agg AS (
+                SELECT
+                    DATE_TRUNC('month', COALESCE(i.invoice_date::timestamp, i.created_at))::date AS month_start,
+                    COALESCE(SUM(COALESCE(i.amount_paid, 0)), 0) AS revenue
+                FROM invoices i
+                WHERE COALESCE(i.invoice_date::timestamp, i.created_at) >= DATE_TRUNC('month', NOW()) - INTERVAL '5 months'
+                GROUP BY DATE_TRUNC('month', COALESCE(i.invoice_date::timestamp, i.created_at))::date
+            )
+            SELECT
+                TO_CHAR(m.month_start, 'YYYY-MM') AS month,
+                TO_CHAR(m.month_start, 'Mon') AS month_label,
+                COALESCE(ta.trips, 0) AS trips,
+                COALESCE(ta.completed, 0) AS completed,
+                COALESCE(ia.revenue, 0) AS revenue,
+                COALESCE(ta.distance, 0) AS distance
+            FROM month_bucket m
+            LEFT JOIN trip_agg ta ON ta.month_start = m.month_start
+            LEFT JOIN invoice_agg ia ON ia.month_start = m.month_start
+            ORDER BY m.month_start
         `);
         return result.rows;
     },

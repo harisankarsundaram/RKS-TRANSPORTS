@@ -65,6 +65,23 @@ function normalizePolyline(rawPolyline) {
     }
 }
 
+async function getTripPath(tripId) {
+    const logsResult = await pool.query(
+        `SELECT latitude, longitude, COALESCE(speed_kmph, 0) AS speed, recorded_at
+         FROM gps_logs
+         WHERE trip_id = $1
+         ORDER BY recorded_at ASC`,
+        [tripId]
+    );
+
+    return logsResult.rows.map((row) => ({
+        latitude: Number(row.latitude),
+        longitude: Number(row.longitude),
+        speed: Number(row.speed),
+        timestamp: row.recorded_at
+    }));
+}
+
 async function ensureSchema() {
     await pool.query('ALTER TABLE trips ADD COLUMN IF NOT EXISTS route_polyline TEXT');
     await pool.query(`
@@ -90,25 +107,69 @@ app.get('/health', async (req, res) => {
 app.get('/tracking/live', async (req, res) => {
     try {
         const latest = await pool.query(`
-            SELECT DISTINCT ON (g.truck_id)
-                g.gps_id,
-                g.truck_id,
+            SELECT
                 t.trip_id,
+                t.truck_id,
                 t.source,
                 t.destination,
                 t.status AS trip_status,
                 tr.truck_number,
-                g.latitude,
-                g.longitude,
-                COALESCE(g.speed_kmph, 0) AS speed,
-                COALESCE(g.recorded_at, NOW()) AS timestamp
-            FROM gps_logs g
-            LEFT JOIN trips t ON t.trip_id = g.trip_id
-            LEFT JOIN trucks tr ON tr.truck_id = g.truck_id
-            ORDER BY g.truck_id, g.recorded_at DESC
+                COALESCE(last_trip.latitude, last_truck.latitude) AS latitude,
+                COALESCE(last_trip.longitude, last_truck.longitude) AS longitude,
+                COALESCE(last_trip.speed_kmph, last_truck.speed_kmph, 0) AS speed,
+                COALESCE(last_trip.recorded_at, last_truck.recorded_at, NOW()) AS timestamp,
+                COALESCE(t.distance_km, 0) AS trip_distance
+            FROM trips t
+            LEFT JOIN trucks tr ON tr.truck_id = t.truck_id
+            LEFT JOIN LATERAL (
+                SELECT latitude, longitude, speed_kmph, recorded_at
+                FROM gps_logs
+                WHERE trip_id = t.trip_id
+                ORDER BY recorded_at DESC
+                LIMIT 1
+            ) last_trip ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT latitude, longitude, speed_kmph, recorded_at
+                FROM gps_logs
+                WHERE truck_id = t.truck_id
+                ORDER BY recorded_at DESC
+                LIMIT 1
+            ) last_truck ON TRUE
+            WHERE LOWER(t.status) IN ('running', 'in_progress')
+            ORDER BY t.trip_id ASC
         `);
 
-        return res.json({ success: true, count: latest.rows.length, data: latest.rows });
+        const data = [];
+
+        for (const item of latest.rows) {
+            const latitude = Number(item.latitude);
+            const longitude = Number(item.longitude);
+            if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+                continue;
+            }
+
+            const tripPath = await getTripPath(item.trip_id);
+            const distanceTravelled = sumSegmentDistance(tripPath);
+            const totalDistance = Math.max(Number(item.trip_distance || 0), distanceTravelled);
+            const tripProgress = totalDistance > 0
+                ? Math.min(distanceTravelled / totalDistance, 1)
+                : 0;
+
+            data.push({
+                truck_id: Number(item.truck_id),
+                truck_number: item.truck_number || String(item.truck_id),
+                trip_id: Number(item.trip_id),
+                latitude,
+                longitude,
+                speed: Number(item.speed || 0),
+                timestamp: item.timestamp,
+                trip_progress: Number(tripProgress.toFixed(4)),
+                distance_travelled: Number(distanceTravelled.toFixed(3)),
+                trip_distance: Number(totalDistance.toFixed(3))
+            });
+        }
+
+        return res.json({ success: true, count: data.length, data });
     } catch (error) {
         return res.status(500).json({ success: false, message: error.message });
     }
@@ -116,6 +177,10 @@ app.get('/tracking/live', async (req, res) => {
 
 app.get('/tracking/trip/:tripId', async (req, res) => {
     const tripId = Number(req.params.tripId);
+
+    if (!Number.isFinite(tripId)) {
+        return res.status(400).json({ success: false, message: 'Invalid trip id' });
+    }
 
     try {
         const [tripResult, logResult] = await Promise.all([

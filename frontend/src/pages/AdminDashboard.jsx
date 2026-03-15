@@ -1099,7 +1099,7 @@ function AdminDashboard() {
                 <section className="analytics-card premium-revenue-card">
                     <div className="premium-panel-header">
                         <h3 className="analytics-card-title">Revenue vs Expenses</h3>
-                        <span className="premium-badge muted">Dual-lane trend view</span>
+                        <span className="premium-badge muted">Last 6 months from records</span>
                     </div>
                     {monthlyCombined.length > 0 ? (
                         <div className="revexp-trend-alt">
