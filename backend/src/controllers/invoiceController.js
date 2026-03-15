@@ -146,7 +146,7 @@ const InvoiceController = {
     async getDashboardKPIs(req, res, next) {
         try {
             const invoiceTotals = await InvoiceModel.getDashboardTotals();
-            const expenseTotals = await ExpenseModel.getGlobalTotals();
+            const expenseTotals = await ExpenseModel.getOperationalGlobalTotals();
 
             const totalRevenue = parseFloat(invoiceTotals.total_revenue) || 0;
             const totalExpenses = parseFloat(expenseTotals.total_expenses) || 0;

@@ -688,6 +688,56 @@
   gap: 0.6rem;
 }
 
+.fleet-status-expanded {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.fleet-management-counts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.fleet-management-link {
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  background: linear-gradient(135deg, #F7FAFF 0%, #FFFFFF 100%);
+  padding: 0.7rem 0.8rem;
+  text-decoration: none;
+  display: grid;
+  gap: 0.2rem;
+  color: var(--text-main);
+  min-height: 88px;
+}
+
+.fleet-management-link span {
+  font-size: 0.67rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.fleet-management-link strong {
+  font-size: 1.45rem;
+  line-height: 1.1;
+}
+
+.fleet-management-link small {
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+}
+
+.fleet-management-link:hover {
+  border-color: var(--viz-info-border);
+  background: #EDF4FF;
+}
+
+.fleet-status-concise-grid.fill-space {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .fleet-status-concise-item {
   border: 1px solid var(--border-light);
   border-radius: 10px;
@@ -709,6 +759,15 @@
 .fleet-status-concise-item strong {
   font-size: 1.12rem;
   color: var(--text-main);
+}
+
+.fleet-status-concise-item.emphasis {
+  background: #F4F8FF;
+  border-color: #DCE7F7;
+}
+
+.fleet-status-concise-item.emphasis strong {
+  color: #1A4D99;
 }
 
 .fleet-status-concise-note {
@@ -2147,6 +2206,10 @@
 
   .fleet-status-concise-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fleet-management-counts {
+    grid-template-columns: 1fr;
   }
 
   .revexp-alt-lane {

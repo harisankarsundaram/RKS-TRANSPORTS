@@ -706,11 +706,24 @@ function AdminDashboard() {
     }));
 
     const maxTrendValue = Math.max(...monthlyCombined.flatMap((month) => [month.revenue, month.expenses]), 1);
+    const fleetAvailableCount = Number(ts.Available || 0);
+    const fleetAssignedCount = Number(ts.Assigned || 0);
+    const fleetMaintenanceCount = Number(ts.Maintenance || 0);
+    const fleetTrackedTotal = Math.max(
+        Number(ts.total || 0),
+        Number(fleetStats.trucks || 0),
+        fleetAvailableCount + fleetAssignedCount + fleetMaintenanceCount
+    );
+
+    const assignedSharePercent = Math.round((fleetAssignedCount / Math.max(fleetTrackedTotal, 1)) * 100);
+    const maintenanceSharePercent = Math.round((fleetMaintenanceCount / Math.max(fleetTrackedTotal, 1)) * 100);
+    const availableSharePercent = Math.max(0, 100 - assignedSharePercent - maintenanceSharePercent);
+
     const fleetUtilizationPercent = Math.min(
         100,
         Math.round(
-            ((Number(ts.Assigned || 0) + Number(ts.Maintenance || 0)) /
-                Math.max(Number(ts.total || fleetStats.trucks || 1), 1)) * 100
+            ((fleetAssignedCount + fleetMaintenanceCount) /
+                Math.max(fleetTrackedTotal || 1, 1)) * 100
         )
     );
 
@@ -910,28 +923,57 @@ function AdminDashboard() {
                 <section className="analytics-card">
                     <div className="analytics-card-header-row">
                         <h3 className="analytics-card-title">Fleet Status</h3>
-                        <span className="premium-badge muted">{loadingValue || fleetStats.trucks} trucks</span>
+                        <span className="premium-badge muted">{loadingValue || fleetTrackedTotal} trucks</span>
                     </div>
-                    <div className="fleet-status-concise-grid">
-                        <article className="fleet-status-concise-item">
-                            <span>Available</span>
-                            <strong className="fleet-available">{loadingValue || ts.Available || 0}</strong>
-                        </article>
-                        <article className="fleet-status-concise-item">
-                            <span>Assigned</span>
-                            <strong className="fleet-assigned">{loadingValue || ts.Assigned || 0}</strong>
-                        </article>
-                        <article className="fleet-status-concise-item">
-                            <span>Maintenance</span>
-                            <strong className="fleet-maintenance">{loadingValue || ts.Maintenance || 0}</strong>
-                        </article>
-                        <article className="fleet-status-concise-item">
-                            <span>Drivers</span>
-                            <strong>{loadingValue || fleetStats.drivers || 0}</strong>
-                        </article>
+                    <div className="fleet-status-expanded">
+                        <div className="fleet-management-counts">
+                            <Link to="/lorries" className="fleet-management-link">
+                                <span>Lorry Management</span>
+                                <strong>{loadingValue || fleetTrackedTotal}</strong>
+                                <small>Total trucks registered</small>
+                            </Link>
+                            <Link to="/drivers" className="fleet-management-link">
+                                <span>Driver Management</span>
+                                <strong>{loadingValue || fleetStats.drivers || 0}</strong>
+                                <small>Total drivers available</small>
+                            </Link>
+                        </div>
+
+                        <div className="fleet-status-concise-grid fill-space">
+                            <article className="fleet-status-concise-item">
+                                <span>Available</span>
+                                <strong className="fleet-available">{loadingValue || fleetAvailableCount}</strong>
+                            </article>
+                            <article className="fleet-status-concise-item">
+                                <span>Assigned</span>
+                                <strong className="fleet-assigned">{loadingValue || fleetAssignedCount}</strong>
+                            </article>
+                            <article className="fleet-status-concise-item">
+                                <span>Maintenance</span>
+                                <strong className="fleet-maintenance">{loadingValue || fleetMaintenanceCount}</strong>
+                            </article>
+                            <article className="fleet-status-concise-item emphasis">
+                                <span>Utilization</span>
+                                <strong>{loadingValue || `${fleetUtilizationPercent}%`}</strong>
+                            </article>
+                        </div>
+
+                        <div className="utilization-bar-wrap">
+                            <div className="utilization-label">Fleet occupancy split</div>
+                            <div className="utilization-bar">
+                                <span className="utilization-segment seg-assigned" style={{ width: `${assignedSharePercent}%` }} />
+                                <span className="utilization-segment seg-maintenance" style={{ width: `${maintenanceSharePercent}%` }} />
+                                <span className="utilization-segment seg-available" style={{ width: `${availableSharePercent}%` }} />
+                            </div>
+                            <div className="utilization-legend">
+                                <span><i className="dot dot-assigned" />Assigned {fleetAssignedCount}</span>
+                                <span><i className="dot dot-maintenance" />Maintenance {fleetMaintenanceCount}</span>
+                                <span><i className="dot dot-available" />Available {fleetAvailableCount}</span>
+                            </div>
+                        </div>
                     </div>
                     <p className="fleet-status-concise-note">
-                        Total fleet utilization: {loadingValue || `${fleetUtilizationPercent}%`}
+                        Truck and driver counts are synced from Lorry Management and Driver Management pages.
                     </p>
                 </section>
 

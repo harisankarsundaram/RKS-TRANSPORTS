@@ -299,7 +299,7 @@ const TripController = {
             const [analytics, invoiceTotals, expenseTotals, availableCount, monthlyTrips, topRoutes, recentCompleted, expenseCategories, expenseMonthly, truckStatus] = await Promise.all([
                 TripModel.getTripAnalytics(filters),
                 InvoiceModel.getDashboardTotals(),
-                ExpenseModel.getGlobalTotals(),
+                ExpenseModel.getOperationalGlobalTotals(),
                 TruckModel.getAvailableCount(),
                 TripModel.getMonthlyTrends(),
                 TripModel.getTopRoutes(5),
