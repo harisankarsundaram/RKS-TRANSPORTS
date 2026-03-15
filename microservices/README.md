@@ -30,7 +30,16 @@ docker compose up --build
 - `GET /tracking/trip/:tripId` on tracking-service
 - `POST /predict/eta` on ml-service
 - `POST /predict/delay` on ml-service
+- `GET /models` on ml-service
 - `GET /analytics/fuel/anomalies` on analytics-service
 - `GET /analytics/backhaul/suggestions` on analytics-service
 - `POST /alerts/evaluate` on alert-service
 - `POST /fleet/smart-entry` on fleet-service
+
+## Mock GPS Provider Modes
+
+`mock-gps-service` supports route provider separation so you can keep synthetic GPS now and plug a real provider later:
+
+- `GPS_ROUTE_PROVIDER=mock` (default): uses DB route or synthetic route fallback.
+- `GPS_ROUTE_PROVIDER=external`: uses the external provider hook in `mock-gps-service/src/providers/externalRouteProvider.js`.
+- `REAL_GPS_API_KEY`: optional key consumed by your external provider implementation.

@@ -1,0 +1,79 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: logistics-postgres-phase1
+    environment:
+      POSTGRES_DB: logistics_platform
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - phase1_postgres_data:/var/lib/postgresql/data
+
+  auth-service:
+    build: ./auth-service
+    container_name: phase1-auth-service
+    environment:
+      PORT: 3201
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/logistics_platform
+      JWT_SECRET: change_this_secret
+    depends_on:
+      - postgres
+    ports:
+      - "3201:3201"
+
+  fleet-service:
+    build: ./fleet-service
+    container_name: phase1-fleet-service
+    environment:
+      PORT: 3202
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/logistics_platform
+    depends_on:
+      - postgres
+    ports:
+      - "3202:3202"
+
+  trip-service:
+    build: ./trip-service
+    container_name: phase1-trip-service
+    environment:
+      PORT: 3203
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/logistics_platform
+    depends_on:
+      - postgres
+    ports:
+      - "3203:3203"
+
+  booking-service:
+    build: ./booking-service
+    container_name: phase1-booking-service
+    environment:
+      PORT: 3204
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/logistics_platform
+      TRIP_SERVICE_URL: http://trip-service:3203
+    depends_on:
+      - postgres
+      - trip-service
+    ports:
+      - "3204:3204"
+
+  api-gateway:
+    build: ./api-gateway
+    container_name: phase1-api-gateway
+    environment:
+      PORT: 3200
+      AUTH_SERVICE_URL: http://auth-service:3201
+      FLEET_SERVICE_URL: http://fleet-service:3202
+      TRIP_SERVICE_URL: http://trip-service:3203
+      BOOKING_SERVICE_URL: http://booking-service:3204
+    depends_on:
+      - auth-service
+      - fleet-service
+      - trip-service
+      - booking-service
+    ports:
+      - "3200:3200"
+
+volumes:
+  phase1_postgres_data:

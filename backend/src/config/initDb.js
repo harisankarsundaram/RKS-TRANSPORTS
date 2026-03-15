@@ -6,8 +6,9 @@ async function initDatabase() {
         console.log('🔄 Initializing PostgreSQL Database...');
         client = await pool.connect();
 
-        // Enable UUID extension (optional, for future use)
+        // Enable UUID helpers used by legacy and current schemas
         await client.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
+        await client.query('CREATE EXTENSION IF NOT EXISTS "pgcrypto"');
 
         // Create users table
         await client.query(`
@@ -242,10 +243,9 @@ async function initDatabase() {
         `);
         console.log('  ✔ gps_logs, fuel_logs, maintenance tables ensured');
 
-        // ── Financial Enhancement: Create expenses table (UUID) ──
-        await client.query('DROP TABLE IF EXISTS expenses CASCADE');
+        // ── Financial Enhancement: Ensure expenses table (non-destructive) ──
         await client.query(`
-            CREATE TABLE expenses (
+            CREATE TABLE IF NOT EXISTS expenses (
                 expense_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 trip_id INTEGER REFERENCES trips(trip_id) ON DELETE CASCADE,
                 truck_id INTEGER REFERENCES trucks(truck_id),
@@ -255,14 +255,20 @@ async function initDatabase() {
                 created_at TIMESTAMP DEFAULT NOW()
             )
         `);
-        console.log('  ✔ expenses table created with UUID PK');
+        await client.query('ALTER TABLE expenses ADD COLUMN IF NOT EXISTS trip_id INTEGER REFERENCES trips(trip_id) ON DELETE CASCADE');
+        await client.query('ALTER TABLE expenses ADD COLUMN IF NOT EXISTS truck_id INTEGER REFERENCES trucks(truck_id)');
+        await client.query('ALTER TABLE expenses ADD COLUMN IF NOT EXISTS category VARCHAR(50)');
+        await client.query('ALTER TABLE expenses ADD COLUMN IF NOT EXISTS amount NUMERIC(12,2)');
+        await client.query('ALTER TABLE expenses ADD COLUMN IF NOT EXISTS description TEXT');
+        await client.query('ALTER TABLE expenses ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()');
+        await client.query('UPDATE expenses SET created_at = COALESCE(created_at, NOW())');
+        console.log('  ✔ expenses table ensured (non-destructive)');
 
-        // ── Financial Enhancement: Rebuild invoices table (UUID) ──
-        await client.query('DROP TABLE IF EXISTS invoices CASCADE');
+        // ── Financial Enhancement: Ensure invoices table (non-destructive) ──
         await client.query(`
-            CREATE TABLE invoices (
+            CREATE TABLE IF NOT EXISTS invoices (
                 invoice_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                trip_id INTEGER UNIQUE REFERENCES trips(trip_id),
+                trip_id INTEGER REFERENCES trips(trip_id),
                 invoice_number VARCHAR(50) UNIQUE NOT NULL,
                 invoice_date DATE NOT NULL,
                 due_date DATE NOT NULL,
@@ -274,7 +280,36 @@ async function initDatabase() {
                 created_at TIMESTAMP DEFAULT NOW()
             )
         `);
-        console.log('  ✔ invoices table created with UUID PK');
+        await client.query('ALTER TABLE invoices ADD COLUMN IF NOT EXISTS trip_id INTEGER REFERENCES trips(trip_id)');
+        await client.query('ALTER TABLE invoices ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(50)');
+        await client.query('ALTER TABLE invoices ADD COLUMN IF NOT EXISTS invoice_date DATE');
+        await client.query('ALTER TABLE invoices ADD COLUMN IF NOT EXISTS due_date DATE');
+        await client.query('ALTER TABLE invoices ADD COLUMN IF NOT EXISTS subtotal NUMERIC(12,2)');
+        await client.query('ALTER TABLE invoices ADD COLUMN IF NOT EXISTS gst_amount NUMERIC(12,2)');
+        await client.query('ALTER TABLE invoices ADD COLUMN IF NOT EXISTS total_amount NUMERIC(12,2)');
+        await client.query('ALTER TABLE invoices ADD COLUMN IF NOT EXISTS payment_status VARCHAR(20) DEFAULT \'Pending\'');
+        await client.query('ALTER TABLE invoices ADD COLUMN IF NOT EXISTS amount_paid NUMERIC(12,2) DEFAULT 0');
+        await client.query('ALTER TABLE invoices ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()');
+
+        await client.query(`
+            UPDATE invoices
+            SET invoice_number = COALESCE(invoice_number, CONCAT('INV-LEGACY-', invoice_id::text)),
+                invoice_date = COALESCE(invoice_date, created_at::date, CURRENT_DATE),
+                due_date = COALESCE(due_date, (COALESCE(created_at::date, CURRENT_DATE) + INTERVAL '15 days')::date),
+                subtotal = COALESCE(subtotal, total_amount, 0),
+                gst_amount = COALESCE(gst_amount, 0),
+                total_amount = COALESCE(total_amount, subtotal, 0),
+                amount_paid = COALESCE(amount_paid, 0),
+                payment_status = CASE
+                    WHEN payment_status IN ('Pending', 'Partial', 'Paid') THEN payment_status
+                    WHEN COALESCE(amount_paid, 0) <= 0 THEN 'Pending'
+                    WHEN COALESCE(total_amount, 0) > 0 AND COALESCE(amount_paid, 0) >= COALESCE(total_amount, 0) THEN 'Paid'
+                    ELSE 'Partial'
+                END,
+                created_at = COALESCE(created_at, NOW())
+        `);
+        await client.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_invoice_number_unique ON invoices(invoice_number)');
+        console.log('  ✔ invoices table ensured (non-destructive)');
 
         // Create indexes for performance
         await client.query('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)');

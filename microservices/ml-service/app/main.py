@@ -117,6 +117,40 @@ def health() -> dict:
     }
 
 
+@app.get("/models")
+def models() -> dict:
+    return {
+        "status": "OK",
+        "service": "ml-service",
+        "models": [
+            {
+                "domain": "ETA prediction",
+                "model_name": "linear_regression",
+                "endpoint": "/predict/eta",
+                "description": "Baseline ETA estimator trained on distance and speed features.",
+            },
+            {
+                "domain": "ETA prediction",
+                "model_name": "random_forest_regressor",
+                "endpoint": "/predict/eta",
+                "description": "Tree ensemble ETA estimator blended with linear regression output.",
+            },
+            {
+                "domain": "Delay risk",
+                "model_name": "logistic_regression",
+                "endpoint": "/predict/delay",
+                "description": "Probabilistic delay classifier based on slack, ETA, distance, and traffic.",
+            },
+            {
+                "domain": "Delay risk",
+                "model_name": "random_forest_classifier",
+                "endpoint": "/predict/delay",
+                "description": "Non-linear delay classifier combined with logistic regression risk.",
+            },
+        ],
+    }
+
+
 @app.post("/predict/eta")
 def predict_eta(payload: EtaRequest) -> dict:
     road_value = ROAD_TYPE_MAP.get(payload.road_type, ROAD_TYPE_MAP["mixed"])

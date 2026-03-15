@@ -1,4 +1,5 @@
 const TICK_INTERVAL_MS = 5000;
+const AUTO_RESTART_DELAY_MS = 15000;
 
 function isoNow(date = new Date()) {
     return date.toISOString();
@@ -59,11 +60,15 @@ const VEHICLE_BLUEPRINTS = [
     {
         vehicleId: 'TRUCK_101',
         mileageKmpl: 5,
+        source: 'Coimbatore',
+        destination: 'Chennai',
         route: ROUTE_COIMBATORE_TO_CHENNAI
     },
     {
         vehicleId: 'TRUCK_102',
         mileageKmpl: 4.6,
+        source: 'Bangalore',
+        destination: 'Hyderabad',
         route: ROUTE_BANGALORE_TO_HYDERABAD
     }
 ];
@@ -76,6 +81,7 @@ class MockTrackingProvider {
         this.trips = new Map();
 
         this.initializeVehicles();
+        this.bootstrapTracking();
         this.startSimulation();
     }
 
@@ -84,6 +90,8 @@ class MockTrackingProvider {
             this.vehicles.set(blueprint.vehicleId, {
                 vehicleId: blueprint.vehicleId,
                 mileageKmpl: blueprint.mileageKmpl,
+                source: blueprint.source,
+                destination: blueprint.destination,
                 route: blueprint.route,
                 routeDistanceKm: calculateRouteDistanceKm(blueprint.route),
                 routeIndex: 0,
@@ -91,9 +99,28 @@ class MockTrackingProvider {
                 ignition: false,
                 status: 'not_started',
                 currentTripId: null,
-                lastLocationAt: isoNow()
+                lastLocationAt: isoNow(),
+                completedAtMs: 0
             });
         }
+    }
+
+    bootstrapTracking() {
+        const startedTrips = [];
+
+        for (const vehicle of this.vehicles.values()) {
+            if (!vehicle.currentTripId) {
+                startedTrips.push(this.startTrip(vehicle.vehicleId));
+                continue;
+            }
+
+            const trip = this.trips.get(vehicle.currentTripId);
+            if (!trip || trip.status !== 'in_progress') {
+                startedTrips.push(this.startTrip(vehicle.vehicleId));
+            }
+        }
+
+        return startedTrips;
     }
 
     startSimulation() {
@@ -224,6 +251,7 @@ class MockTrackingProvider {
         vehicle.ignition = false;
         vehicle.speedKmph = 0;
         vehicle.lastLocationAt = timestamp;
+        vehicle.completedAtMs = Date.parse(timestamp) || Date.now();
 
         if (reachedRouteEnd) {
             trip.distanceTravelledKm = vehicle.routeDistanceKm;
@@ -238,7 +266,25 @@ class MockTrackingProvider {
     tickVehicles() {
         const nowMs = Date.now();
         for (const vehicle of this.vehicles.values()) {
-            this.ensureVehicleAdvancedIfDue(vehicle, nowMs);
+            const activeTrip = vehicle.currentTripId
+                ? this.trips.get(vehicle.currentTripId)
+                : null;
+
+            if (activeTrip && activeTrip.status === 'in_progress') {
+                this.ensureVehicleAdvancedIfDue(vehicle, nowMs);
+                continue;
+            }
+
+            if (!activeTrip || activeTrip.status !== 'in_progress') {
+                const elapsedSinceCompletion = nowMs - (vehicle.completedAtMs || 0);
+                if (elapsedSinceCompletion >= AUTO_RESTART_DELAY_MS) {
+                    try {
+                        this.startTrip(vehicle.vehicleId);
+                    } catch {
+                        // Ignore auto-restart errors and continue simulation.
+                    }
+                }
+            }
         }
     }
 
@@ -319,6 +365,7 @@ class MockTrackingProvider {
         vehicle.status = 'in_progress';
         vehicle.currentTripId = tripId;
         vehicle.lastLocationAt = isoNow(now);
+        vehicle.completedAtMs = 0;
 
         const trip = {
             tripId,
@@ -448,6 +495,88 @@ class MockTrackingProvider {
             startedAt: trip.startedAt,
             endedAt: trip.endedAt,
             history: trip.history
+        };
+    }
+
+    estimateDelayRiskPercentage(trip, etaMinutes) {
+        if (trip.status !== 'in_progress') {
+            return 0;
+        }
+
+        if (!Number.isFinite(etaMinutes) || etaMinutes <= 0) {
+            return 0;
+        }
+
+        const progressPenalty = Math.max(0, 1 - (trip.progressPercentage / 100));
+        const normalizedEta = Math.min(etaMinutes / 360, 1);
+        const risk = ((normalizedEta * 70) + (progressPenalty * 30));
+        return Number(Math.min(Math.max(risk, 0), 100).toFixed(2));
+    }
+
+    getTrackingLive() {
+        this.tickVehicles();
+
+        return Array.from(this.vehicles.values())
+            .map((vehicle) => {
+                const trip = vehicle.currentTripId
+                    ? this.trips.get(vehicle.currentTripId)
+                    : null;
+
+                if (!trip || trip.status !== 'in_progress') {
+                    return null;
+                }
+
+                const point = this.getCurrentPoint(vehicle);
+                return {
+                    truck_id: vehicle.vehicleId,
+                    truck_number: vehicle.vehicleId,
+                    trip_id: trip.tripId,
+                    latitude: Number(point.latitude.toFixed(6)),
+                    longitude: Number(point.longitude.toFixed(6)),
+                    speed: Number(vehicle.speedKmph.toFixed(1)),
+                    timestamp: vehicle.lastLocationAt,
+                    trip_progress: Number((trip.progressPercentage / 100).toFixed(4)),
+                    distance_travelled: Number(trip.distanceTravelledKm.toFixed(3)),
+                    trip_distance: Number(trip.totalRouteDistanceKm.toFixed(3))
+                };
+            })
+            .filter(Boolean);
+    }
+
+    getTrackingTrip(tripId) {
+        this.tickVehicles();
+
+        const trip = this.getTripOrThrow(tripId);
+        const vehicle = this.getVehicleOrThrow(trip.vehicleId);
+        const eta = this.getTripEta(tripId);
+        const delayRiskPercentage = this.estimateDelayRiskPercentage(trip, eta.etaMinutes);
+
+        const route = vehicle.route.map((point) => ({
+            latitude: Number(point.latitude.toFixed(6)),
+            longitude: Number(point.longitude.toFixed(6))
+        }));
+
+        const gpsLogs = trip.history.map((point) => ({
+            latitude: Number(point.latitude),
+            longitude: Number(point.longitude),
+            speed: Number(point.speed),
+            timestamp: point.timestamp
+        }));
+
+        return {
+            trip_id: trip.tripId,
+            truck_id: trip.vehicleId,
+            source: vehicle.source,
+            destination: vehicle.destination,
+            status: trip.status,
+            gps_logs: gpsLogs,
+            route,
+            distance_travelled_km: Number(trip.distanceTravelledKm.toFixed(3)),
+            total_route_distance_km: Number(trip.totalRouteDistanceKm.toFixed(3)),
+            progress: Number((trip.progressPercentage / 100).toFixed(4)),
+            progress_percent: Number(trip.progressPercentage.toFixed(2)),
+            eta_minutes: Number(eta.etaMinutes.toFixed(2)),
+            delay_risk_percentage: delayRiskPercentage
         };
     }
 }

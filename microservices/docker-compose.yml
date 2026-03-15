@@ -78,6 +78,7 @@ services:
       PORT: 3106
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/rks_logistics
       MOCK_GPS_TICK_MS: 5000
+      GPS_ROUTE_PROVIDER: mock
     depends_on:
       - postgres
     ports:

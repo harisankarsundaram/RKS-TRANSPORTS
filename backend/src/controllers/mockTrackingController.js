@@ -1,6 +1,33 @@
 const { mockTrackingProvider } = require('../services/mockTrackingProvider');
 
 const MockTrackingController = {
+    bootstrapTracking(req, res, next) {
+        try {
+            const startedTrips = mockTrackingProvider.bootstrapTracking();
+            res.json({ success: true, count: startedTrips.length, data: startedTrips });
+        } catch (error) {
+            next(error);
+        }
+    },
+
+    getTrackingLive(req, res, next) {
+        try {
+            const data = mockTrackingProvider.getTrackingLive();
+            res.json({ success: true, count: data.length, data });
+        } catch (error) {
+            next(error);
+        }
+    },
+
+    getTrackingTrip(req, res, next) {
+        try {
+            const data = mockTrackingProvider.getTrackingTrip(req.params.id);
+            res.json({ success: true, data });
+        } catch (error) {
+            next(error);
+        }
+    },
+
     listVehicles(req, res, next) {
         try {
             const vehicles = mockTrackingProvider.getVehicles();

@@ -8,7 +8,7 @@ import OwnerAuth from './pages/OwnerAuth'
 import Contact from './pages/Contact'
 import BookingPortal from './pages/BookingPortal'
 import AdminDashboard from './pages/AdminDashboard'
-import IntelligenceDashboard from './pages/IntelligenceDashboard'
+import LiveFleetTracking from './pages/LiveFleetTracking'
 import DriverDashboard from './pages/DriverDashboard'
 import LorryManagement from './pages/LorryManagement'
 import DriverManagement from './pages/DriverManagement'
@@ -43,7 +43,8 @@ function App() {
       <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
         <Route element={<DashboardLayout role="admin" />}>
           <Route path="dashboard/admin" element={<AdminDashboard />} />
-          <Route path="dashboard/admin/intelligence" element={<IntelligenceDashboard />} />
+          <Route path="dashboard/admin/live-tracking" element={<LiveFleetTracking />} />
+          <Route path="dashboard/admin/intelligence" element={<Navigate to="/dashboard/admin/live-tracking" replace />} />
           <Route path="lorries" element={<LorryManagement />} />
           <Route path="drivers" element={<DriverManagement />} />
           <Route path="trips" element={<TripManagement />} />

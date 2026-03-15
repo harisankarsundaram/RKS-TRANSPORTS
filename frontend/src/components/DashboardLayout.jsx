@@ -1,10 +1,13 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import '../pages/Dashboard.css';
 
 function DashboardLayout({ role }) {
     const { logout } = useAuth();
+    const location = useLocation();
     const navigate = useNavigate();
+
+    const isImmersiveTracking = role === 'admin' && location.pathname.startsWith('/dashboard/admin/live-tracking');
 
     const handleLogout = () => {
         logout();
@@ -12,7 +15,7 @@ function DashboardLayout({ role }) {
     };
 
     return (
-        <div className="dashboard-container">
+        <div className={`dashboard-container ${isImmersiveTracking ? 'dashboard-container-immersive' : ''}`}>
             <aside className="dashboard-sidebar">
                 <div className="sidebar-header">
                     <h2>{role === 'admin' ? 'RKS Admin' : 'RKS Pilot'}</h2>
@@ -27,10 +30,7 @@ function DashboardLayout({ role }) {
                     {role === 'admin' ? (
                         <>
                             <NavLink to="/dashboard/admin" end className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-                                <span>Normal Dashboard</span>
-                            </NavLink>
-                            <NavLink to="/dashboard/admin/intelligence" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-                                <span>Intelligence Dashboard</span>
+                                <span>Dashboard</span>
                             </NavLink>
                             <NavLink to="/lorries" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
                                 <span>Lorry Management</span>
@@ -46,9 +46,6 @@ function DashboardLayout({ role }) {
                             </NavLink>
                             <NavLink to="/maintenance" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
                                 <span>Maintenance</span>
-                            </NavLink>
-                            <NavLink to="/bookings" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-                                <span>Customer Bookings</span>
                             </NavLink>
 
                             <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border-light)' }}>

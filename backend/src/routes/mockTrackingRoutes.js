@@ -3,6 +3,10 @@ const MockTrackingController = require('../controllers/mockTrackingController');
 
 const router = express.Router();
 
+router.post('/tracking/bootstrap', MockTrackingController.bootstrapTracking);
+router.get('/tracking/live', MockTrackingController.getTrackingLive);
+router.get('/tracking/trip/:id', MockTrackingController.getTrackingTrip);
+
 router.get('/vehicles', MockTrackingController.listVehicles);
 router.get('/vehicle/:id/location', MockTrackingController.getVehicleLocation);
 router.get('/vehicle/:id/route', MockTrackingController.getVehicleRoute);

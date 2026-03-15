@@ -1,76 +1,232 @@
-﻿import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import apiClient from '../api/client';
+import { microserviceClients } from '../api/microserviceClients';
+import {
+    buildTripInsightsFromVehicles,
+    ensureTrackingSimulation,
+    fetchLiveVehiclesWithFallback
+} from '../services/liveTrackingService';
 
-const VEHICLE_ROUTE_LABELS = {
-    TRUCK_101: { source: 'Coimbatore', destination: 'Chennai' },
-    TRUCK_102: { source: 'Bangalore', destination: 'Hyderabad' }
+const DASHBOARD_CACHE_KEYS = {
+    bookings: 'rks.dashboard.bookings.v1',
+    fuelAnomalies: 'rks.dashboard.fuel-anomalies.v1',
+    backhaulSuggestions: 'rks.dashboard.backhaul-suggestions.v1',
+    operationalAlerts: 'rks.dashboard.operational-alerts.v1'
 };
 
+const SEEN_BOOKINGS_STORAGE_KEY = 'rks.dashboard.seen-bookings.v1';
+
+const SERVICE_STATUS_LABELS = {
+    checking: 'Checking',
+    live: 'Live',
+    cached: 'Cached',
+    partial: 'Partial',
+    fallback: 'Fallback',
+    offline: 'Fallback'
+};
+
+function isStorageAvailable() {
+    return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+}
+
+function readDashboardCache(cacheKey, fallbackData = []) {
+    if (!isStorageAvailable()) {
+        return { data: fallbackData, updatedAt: null };
+    }
+
+    try {
+        const raw = window.localStorage.getItem(cacheKey);
+        if (!raw) {
+            return { data: fallbackData, updatedAt: null };
+        }
+
+        const parsed = JSON.parse(raw);
+        const data = Array.isArray(fallbackData)
+            ? (Array.isArray(parsed.data) ? parsed.data : fallbackData)
+            : (parsed.data ?? fallbackData);
+
+        return {
+            data,
+            updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : null
+        };
+    } catch {
+        return { data: fallbackData, updatedAt: null };
+    }
+}
+
+function writeDashboardCache(cacheKey, data) {
+    const updatedAt = new Date().toISOString();
+
+    if (!isStorageAvailable()) {
+        return updatedAt;
+    }
+
+    try {
+        window.localStorage.setItem(cacheKey, JSON.stringify({ data, updatedAt }));
+    } catch {
+        // Ignore localStorage write failures and continue with live state.
+    }
+
+    return updatedAt;
+}
+
+function readSeenBookingIds() {
+    if (!isStorageAvailable()) {
+        return new Set();
+    }
+
+    try {
+        const raw = window.localStorage.getItem(SEEN_BOOKINGS_STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(parsed)) {
+            return new Set();
+        }
+
+        return new Set(parsed.map((id) => String(id)));
+    } catch {
+        return new Set();
+    }
+}
+
+function writeSeenBookingIds(ids) {
+    if (!isStorageAvailable()) {
+        return;
+    }
+
+    try {
+        window.localStorage.setItem(SEEN_BOOKINGS_STORAGE_KEY, JSON.stringify(Array.from(ids)));
+    } catch {
+        // Ignore localStorage write failures and continue.
+    }
+}
+
+function resolveTruckLabel({ truckId, truckNumber, truckLookup }) {
+    if (truckNumber) {
+        return truckNumber;
+    }
+
+    if (truckId !== undefined && truckId !== null) {
+        const lookupValue = truckLookup.get(String(truckId));
+        if (lookupValue) {
+            return lookupValue;
+        }
+
+        return `#${truckId}`;
+    }
+
+    return 'System';
+}
+
+function latestTimestamp(values) {
+    const timestamps = values
+        .map((value) => Date.parse(value))
+        .filter((value) => Number.isFinite(value));
+
+    if (timestamps.length === 0) {
+        return null;
+    }
+
+    return new Date(Math.max(...timestamps)).toISOString();
+}
+
+function createServiceStatus(state, detail = '', updatedAt = null) {
+    return {
+        state,
+        label: SERVICE_STATUS_LABELS[state] || 'Unknown',
+        detail,
+        updatedAt
+    };
+}
+
+function formatServiceStatusTitle(label, status) {
+    const parts = [`${label}: ${status.label}`];
+
+    if (status.detail) {
+        parts.push(status.detail);
+    }
+
+    if (status.updatedAt) {
+        parts.push(`Updated ${new Date(status.updatedAt).toLocaleString()}`);
+    }
+
+    return parts.join(' | ');
+}
+
+function ServiceStatusBadge({ label, status, compact = false }) {
+    return (
+        <span
+            className={`service-status-badge ${status.state} ${compact ? 'compact' : ''}`}
+            title={formatServiceStatusTitle(label, status)}
+        >
+            <span className="service-status-name">{label}</span>
+            <span className="service-status-label">{status.label}</span>
+        </span>
+    );
+}
+
+function roundTo(value, digits = 1) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+        return 0;
+    }
+
+    return Number(parsed.toFixed(digits));
+}
+
+function average(values) {
+    if (!Array.isArray(values) || values.length === 0) {
+        return 0;
+    }
+
+    const sum = values.reduce((acc, item) => acc + Number(item || 0), 0);
+    return sum / values.length;
+}
+
 function formatEtaMinutes(minutes) {
-    if (!Number.isFinite(minutes)) {
-        return 'No ETA data';
+    if (!Number.isFinite(minutes) || minutes < 0) {
+        return 'N/A';
     }
 
     if (minutes <= 1) {
         return 'Arrived';
     }
 
-    const rounded = Math.max(1, Math.round(minutes));
-    if (rounded < 60) {
-        return `${rounded} min`;
+    if (minutes < 60) {
+        return `${Math.max(1, Math.round(minutes))} min`;
     }
 
-    const hours = Math.floor(rounded / 60);
-    const mins = rounded % 60;
+    const hours = Math.floor(minutes / 60);
+    const mins = Math.round(minutes % 60);
     return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
 }
 
-function getDelayRisk(etaMinutes, status) {
-    if (status !== 'in_progress') {
-        return 'low';
-    }
+function getRiskTier(delayRiskPercentage) {
+    const value = Number(delayRiskPercentage || 0);
 
-    if (!Number.isFinite(etaMinutes)) {
-        return 'medium';
-    }
-
-    if (etaMinutes > 240) {
+    if (value >= 60) {
         return 'high';
     }
 
-    if (etaMinutes > 120) {
+    if (value >= 35) {
         return 'medium';
     }
 
     return 'low';
 }
 
-function estimateProgressFromRoute(route, currentLatitude, currentLongitude) {
-    if (!Array.isArray(route) || route.length <= 1) {
-        return 0;
-    }
-
-    let bestIndex = 0;
-    let bestDistance = Number.POSITIVE_INFINITY;
-
-    route.forEach((point, index) => {
-        const dLat = Number(point.latitude) - currentLatitude;
-        const dLng = Number(point.longitude) - currentLongitude;
-        const distance = (dLat * dLat) + (dLng * dLng);
-        if (distance < bestDistance) {
-            bestDistance = distance;
-            bestIndex = index;
-        }
-    });
-
-    const progress = (bestIndex / (route.length - 1)) * 100;
-    return Number(progress.toFixed(1));
-}
-
 function AdminKpiSvg({ kind }) {
-    const common = { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' };
+    const common = {
+        width: 20,
+        height: 20,
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        stroke: 'currentColor',
+        strokeWidth: 1.8,
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round'
+    };
 
     if (kind === 'revenue') {
         return (
@@ -115,33 +271,336 @@ function AdminKpiSvg({ kind }) {
 
 function AdminDashboard() {
     const { user } = useAuth();
+
+    const [cacheSnapshot] = useState(() => ({
+        bookings: readDashboardCache(DASHBOARD_CACHE_KEYS.bookings, []),
+        fuelAnomalies: readDashboardCache(DASHBOARD_CACHE_KEYS.fuelAnomalies, []),
+        backhaulSuggestions: readDashboardCache(DASHBOARD_CACHE_KEYS.backhaulSuggestions, []),
+        operationalAlerts: readDashboardCache(DASHBOARD_CACHE_KEYS.operationalAlerts, [])
+    }));
+
     const [data, setData] = useState(null);
     const [fleetStats, setFleetStats] = useState({ trucks: 0, drivers: 0 });
-    const [fleetMeta, setFleetMeta] = useState({
-        fleet: [],
-        running_count: 0,
-        delayed_count: 0,
-        average_eta_minutes: null,
-        average_eta_text: 'No ETA data'
-    });
     const [activity, setActivity] = useState([]);
     const [loading, setLoading] = useState(true);
+
+    const [intelLoading, setIntelLoading] = useState(true);
+    const [intelRefreshing, setIntelRefreshing] = useState(false);
+    const [intelError, setIntelError] = useState('');
+    const [intelNotice, setIntelNotice] = useState({ type: '', text: '' });
+    const [serviceStatus, setServiceStatus] = useState(() => ({
+        booking: cacheSnapshot.bookings.updatedAt
+            ? createServiceStatus('cached', 'Using last known booking data', cacheSnapshot.bookings.updatedAt)
+            : createServiceStatus('checking', 'Waiting for booking-service'),
+        analytics: latestTimestamp([cacheSnapshot.fuelAnomalies.updatedAt, cacheSnapshot.backhaulSuggestions.updatedAt])
+            ? createServiceStatus(
+                'cached',
+                'Using last known analytics data',
+                latestTimestamp([cacheSnapshot.fuelAnomalies.updatedAt, cacheSnapshot.backhaulSuggestions.updatedAt])
+            )
+            : createServiceStatus('checking', 'Waiting for analytics-service'),
+        alerts: cacheSnapshot.operationalAlerts.updatedAt
+            ? createServiceStatus('cached', 'Using last known alert data', cacheSnapshot.operationalAlerts.updatedAt)
+            : createServiceStatus('checking', 'Waiting for alert-service')
+    }));
+
+    const [liveVehicles, setLiveVehicles] = useState([]);
+    const [tripInsights, setTripInsights] = useState([]);
+    const [bookings, setBookings] = useState(cacheSnapshot.bookings.data);
+    const [fuelAnomalies, setFuelAnomalies] = useState(cacheSnapshot.fuelAnomalies.data);
+    const [backhaulSuggestions, setBackhaulSuggestions] = useState(cacheSnapshot.backhaulSuggestions.data);
+    const [operationalAlerts, setOperationalAlerts] = useState(cacheSnapshot.operationalAlerts.data);
+    const [seenBookingIds, setSeenBookingIds] = useState(() => readSeenBookingIds());
+    const [showSeenBookings, setShowSeenBookings] = useState(false);
+
+    const visibleBookings = useMemo(() => {
+        if (showSeenBookings) {
+            return bookings;
+        }
+
+        return bookings.filter((booking) => !seenBookingIds.has(String(booking.id)));
+    }, [bookings, showSeenBookings, seenBookingIds]);
+
+    const unseenBookingsCount = useMemo(
+        () => bookings.filter((booking) => !seenBookingIds.has(String(booking.id))).length,
+        [bookings, seenBookingIds]
+    );
+
+    const overallKpis = useMemo(() => {
+        const progressValues = tripInsights.map((trip) => Number(trip.progress_percent || 0));
+        const etaValues = tripInsights
+            .map((trip) => Number(trip.eta_minutes || 0))
+            .filter((value) => Number.isFinite(value) && value > 0);
+
+        const highDelay = tripInsights.filter((trip) => Number(trip.delay_risk_percentage || 0) >= 60).length;
+
+        return {
+            runningTrips: tripInsights.length,
+            avgProgress: roundTo(average(progressValues), 1),
+            avgEta: etaValues.length > 0 ? roundTo(average(etaValues), 1) : null,
+            highDelayWarnings: highDelay,
+            pendingBookings: bookings.filter((booking) => !seenBookingIds.has(String(booking.id))).length,
+            reportingTrucks: liveVehicles.length
+        };
+    }, [tripInsights, bookings, liveVehicles, seenBookingIds]);
+
+    const loadIntelligence = useCallback(async (withLoader = false) => {
+        if (withLoader) {
+            setIntelLoading(true);
+        } else {
+            setIntelRefreshing(true);
+        }
+
+        try {
+            await ensureTrackingSimulation().catch(() => null);
+
+            let alertsEvaluatorMode = 'microservices';
+            const microAlertEvalWorked = await microserviceClients.alert.post('/alerts/evaluate')
+                .then(() => true)
+                .catch(() => false);
+
+            if (!microAlertEvalWorked) {
+                alertsEvaluatorMode = 'backend-fallback';
+                await apiClient.post('/intelligence/alerts/evaluate').catch(() => null);
+            }
+
+            const [
+                liveRes,
+                bookingsRes,
+                trucksRes,
+                fuelRes,
+                backhaulRes,
+                alertsRes
+            ] = await Promise.allSettled([
+                fetchLiveVehiclesWithFallback(),
+                microserviceClients.booking.get('/bookings?status=pending'),
+                apiClient.get('/trucks'),
+                microserviceClients.analytics.get('/analytics/fuel/anomalies'),
+                microserviceClients.analytics.get('/analytics/backhaul/suggestions'),
+                microserviceClients.alert.get('/alerts?limit=40')
+            ]);
+
+            const liveData = liveRes.status === 'fulfilled' ? (liveRes.value.liveVehicles || []) : [];
+            const liveSource = liveRes.status === 'fulfilled' ? liveRes.value.source : 'unknown';
+            const truckData = trucksRes.status === 'fulfilled' ? (trucksRes.value.data?.data || []) : [];
+            const truckLabelLookup = new Map(
+                truckData
+                    .filter((truck) => truck?.truck_id !== undefined && truck?.truck_id !== null)
+                    .map((truck) => [String(truck.truck_id), truck.truck_number])
+            );
+
+            const bookingsCache = readDashboardCache(DASHBOARD_CACHE_KEYS.bookings, []);
+            const fuelCache = readDashboardCache(DASHBOARD_CACHE_KEYS.fuelAnomalies, []);
+            const backhaulCache = readDashboardCache(DASHBOARD_CACHE_KEYS.backhaulSuggestions, []);
+            const alertsCache = readDashboardCache(DASHBOARD_CACHE_KEYS.operationalAlerts, []);
+
+            let pendingBookings = [];
+            let bookingStatus = createServiceStatus('fallback', 'Using backend fallback for bookings');
+
+            if (bookingsRes.status === 'fulfilled') {
+                pendingBookings = bookingsRes.value.data?.data || [];
+                const updatedAt = writeDashboardCache(DASHBOARD_CACHE_KEYS.bookings, pendingBookings);
+                bookingStatus = createServiceStatus('live', `${pendingBookings.length} requests available`, updatedAt);
+            } else {
+                const fallbackBookings = await apiClient.get('/intelligence/bookings?status=pending').catch(() => null);
+                if (fallbackBookings?.data?.success) {
+                    pendingBookings = fallbackBookings.data.data || [];
+                    const updatedAt = writeDashboardCache(DASHBOARD_CACHE_KEYS.bookings, pendingBookings);
+                    bookingStatus = createServiceStatus('fallback', `${pendingBookings.length} requests via backend intelligence`, updatedAt);
+                } else if (bookingsCache.updatedAt) {
+                    pendingBookings = bookingsCache.data;
+                    bookingStatus = createServiceStatus('cached', 'Using last known booking data', bookingsCache.updatedAt);
+                } else {
+                    bookingStatus = createServiceStatus('fallback', 'No pending booking data yet');
+                }
+            }
+
+            let fuelData = [];
+            let fuelSource = 'fallback';
+            let fuelUpdatedAt = null;
+
+            if (fuelRes.status === 'fulfilled') {
+                fuelData = fuelRes.value.data?.data || [];
+                fuelUpdatedAt = writeDashboardCache(DASHBOARD_CACHE_KEYS.fuelAnomalies, fuelData);
+                fuelSource = 'live';
+            } else {
+                const fallbackFuel = await apiClient.get('/intelligence/fuel/anomalies').catch(() => null);
+                if (fallbackFuel?.data?.success) {
+                    fuelData = fallbackFuel.data.data || [];
+                    fuelUpdatedAt = writeDashboardCache(DASHBOARD_CACHE_KEYS.fuelAnomalies, fuelData);
+                    fuelSource = 'fallback';
+                } else if (fuelCache.updatedAt) {
+                    fuelData = fuelCache.data;
+                    fuelUpdatedAt = fuelCache.updatedAt;
+                    fuelSource = 'cached';
+                } else {
+                    fuelSource = 'fallback';
+                }
+            }
+
+            let backhaulData = [];
+            let backhaulSource = 'fallback';
+            let backhaulUpdatedAt = null;
+
+            if (backhaulRes.status === 'fulfilled') {
+                backhaulData = backhaulRes.value.data?.data || [];
+                backhaulUpdatedAt = writeDashboardCache(DASHBOARD_CACHE_KEYS.backhaulSuggestions, backhaulData);
+                backhaulSource = 'live';
+            } else {
+                const fallbackBackhaul = await apiClient.get('/intelligence/backhaul/suggestions').catch(() => null);
+                if (fallbackBackhaul?.data?.success) {
+                    backhaulData = fallbackBackhaul.data.data || [];
+                    backhaulUpdatedAt = writeDashboardCache(DASHBOARD_CACHE_KEYS.backhaulSuggestions, backhaulData);
+                    backhaulSource = 'fallback';
+                } else if (backhaulCache.updatedAt) {
+                    backhaulData = backhaulCache.data;
+                    backhaulUpdatedAt = backhaulCache.updatedAt;
+                    backhaulSource = 'cached';
+                } else {
+                    backhaulSource = 'fallback';
+                }
+            }
+
+            let analyticsStatus;
+            const analyticsUpdatedAt = latestTimestamp([fuelUpdatedAt, backhaulUpdatedAt]);
+            if (fuelSource === 'live' && backhaulSource === 'live') {
+                analyticsStatus = createServiceStatus('live', 'Fuel and backhaul analytics are live', analyticsUpdatedAt);
+            } else if (fuelSource === 'fallback' && backhaulSource === 'fallback') {
+                analyticsStatus = createServiceStatus('fallback', 'Using backend analytics fallback', analyticsUpdatedAt);
+            } else if (fuelSource === 'live' || backhaulSource === 'live') {
+                analyticsStatus = createServiceStatus('partial', `Fuel ${fuelSource} · Backhaul ${backhaulSource}`, analyticsUpdatedAt);
+            } else if (fuelSource === 'cached' && backhaulSource === 'cached') {
+                analyticsStatus = createServiceStatus('cached', 'Using cached analytics data', analyticsUpdatedAt);
+            } else if (fuelSource === 'cached' || backhaulSource === 'cached' || fuelSource === 'fallback' || backhaulSource === 'fallback') {
+                analyticsStatus = createServiceStatus('partial', `Fuel ${fuelSource} · Backhaul ${backhaulSource}`, analyticsUpdatedAt);
+            } else {
+                analyticsStatus = createServiceStatus('fallback', 'Analytics data is currently limited', analyticsUpdatedAt);
+            }
+
+            let alertData = [];
+            let alertStatus = createServiceStatus('fallback', 'Using backend fallback for alerts');
+
+            if (alertsRes.status === 'fulfilled') {
+                alertData = alertsRes.value.data?.data || [];
+                const updatedAt = writeDashboardCache(DASHBOARD_CACHE_KEYS.operationalAlerts, alertData);
+                alertStatus = createServiceStatus('live', `${alertData.length} alerts available`, updatedAt);
+            } else {
+                const fallbackAlerts = await apiClient.get('/intelligence/alerts?limit=40').catch(() => null);
+                if (fallbackAlerts?.data?.success) {
+                    alertData = fallbackAlerts.data.data || [];
+                    const updatedAt = writeDashboardCache(DASHBOARD_CACHE_KEYS.operationalAlerts, alertData);
+                    alertStatus = createServiceStatus('fallback', `${alertData.length} alerts via backend intelligence`, updatedAt);
+                } else if (alertsCache.updatedAt) {
+                    alertData = alertsCache.data;
+                    alertStatus = createServiceStatus('cached', 'Using last known alert data', alertsCache.updatedAt);
+                } else {
+                    alertStatus = createServiceStatus('fallback', 'No alert data yet');
+                }
+            }
+
+            const normalizedAlertData = alertData.map((alert) => ({
+                ...alert,
+                truck_number: resolveTruckLabel({
+                    truckId: alert.truck_id,
+                    truckNumber: alert.truck_number,
+                    truckLookup: truckLabelLookup
+                })
+            }));
+
+            setLiveVehicles(liveData);
+            setBookings(pendingBookings);
+            setFuelAnomalies(fuelData);
+            setBackhaulSuggestions(backhaulData);
+
+            const insights = await buildTripInsightsFromVehicles(liveData);
+            setTripInsights(insights);
+
+            const derivedOperationalAlerts = normalizedAlertData.length > 0
+                ? normalizedAlertData
+                : [
+                    ...insights
+                        .filter((trip) => Number(trip.delay_risk_percentage || 0) >= 60)
+                        .map((trip) => ({
+                            id: `delay-${trip.trip_id}`,
+                            alert_type: 'delay_risk',
+                            truck_id: trip.truck_id,
+                            truck_number: resolveTruckLabel({
+                                truckId: trip.truck_id,
+                                truckNumber: null,
+                                truckLookup: truckLabelLookup
+                            }),
+                            description: `Trip ${trip.trip_id} is at ${roundTo(trip.delay_risk_percentage, 1)}% delay risk`
+                        })),
+                    ...(pendingBookings.length > 0
+                        ? [{
+                            id: 'pending-bookings',
+                            alert_type: 'pending_bookings',
+                            truck_number: 'System',
+                            description: `${pendingBookings.length} booking requests are pending approval`
+                        }]
+                        : [])
+                ];
+
+            if (alertData.length === 0 && derivedOperationalAlerts.length > 0 && alertStatus.state !== 'live') {
+                alertStatus = createServiceStatus('fallback', 'Derived from trip risk and booking backlog', alertStatus.updatedAt || null);
+            }
+
+            setOperationalAlerts(derivedOperationalAlerts);
+            setServiceStatus({
+                booking: bookingStatus,
+                analytics: analyticsStatus,
+                alerts: alertStatus
+            });
+
+            if (withLoader) {
+                const fallbackServices = [bookingStatus, analyticsStatus, alertStatus]
+                    .filter((status) => status.state === 'fallback')
+                    .length;
+
+                if (fallbackServices > 0 || liveSource === 'backend-mock') {
+                    setIntelNotice({
+                        type: 'success',
+                        text: `Intelligence is active with resilient fallback mode (${fallbackServices} support services on backend fallback, alert evaluator: ${alertsEvaluatorMode}).`
+                    });
+                } else {
+                    setIntelNotice({ type: '', text: '' });
+                }
+            }
+
+            const hasAnyIntelligenceData =
+                liveData.length > 0 ||
+                pendingBookings.length > 0 ||
+                fuelData.length > 0 ||
+                backhaulData.length > 0 ||
+                derivedOperationalAlerts.length > 0;
+
+            if (!hasAnyIntelligenceData) {
+                setIntelError('No intelligence data is available yet. Run the unified seed script and refresh.');
+            } else {
+                setIntelError('');
+            }
+        } catch (error) {
+            setIntelError(error.message || 'Failed to load intelligence widgets');
+        } finally {
+            setIntelLoading(false);
+            setIntelRefreshing(false);
+        }
+    }, []);
 
     useEffect(() => {
         let cancelled = false;
 
-        const fetchAll = async (showLoader = false) => {
+        const fetchSummary = async (showLoader = false) => {
             try {
                 if (showLoader && !cancelled) {
                     setLoading(true);
                 }
 
-                const [summaryRes, trucksRes, driversRes, notifRes, vehiclesRes] = await Promise.allSettled([
+                const [summaryRes, trucksRes, driversRes, notifRes] = await Promise.allSettled([
                     apiClient.get('/trips/analytics/summary'),
                     apiClient.get('/trucks'),
                     apiClient.get('/drivers'),
-                    apiClient.get('/notifications'),
-                    apiClient.get('/vehicles')
+                    apiClient.get('/notifications')
                 ]);
 
                 if (cancelled) {
@@ -152,126 +611,21 @@ function AdminDashboard() {
                     setData(summaryRes.value.data.data);
                 }
 
-                const trucks = trucksRes.status === 'fulfilled' && trucksRes.value.data.success
+                const trucksData = trucksRes.status === 'fulfilled' && trucksRes.value.data.success
                     ? trucksRes.value.data.data
                     : [];
-                const drivers = driversRes.status === 'fulfilled' && driversRes.value.data.success
+                const driversData = driversRes.status === 'fulfilled' && driversRes.value.data.success
                     ? driversRes.value.data.data
                     : [];
-                setFleetStats({ trucks: trucks.length, drivers: drivers.length });
+
+                setFleetStats({ trucks: trucksData.length, drivers: driversData.length });
 
                 if (notifRes.status === 'fulfilled' && notifRes.value.data.success) {
                     setActivity(notifRes.value.data.data.slice(0, 6));
                 }
-
-                if (vehiclesRes.status === 'fulfilled' && vehiclesRes.value.data.success) {
-                    const vehicles = vehiclesRes.value.data.data || [];
-                    const detailedFleetSettled = await Promise.allSettled(
-                        vehicles.map(async (vehicle) => {
-                            const [routeRes, progressRes, etaRes] = await Promise.allSettled([
-                                apiClient.get(`/vehicle/${vehicle.vehicleId}/route`),
-                                vehicle.tripId
-                                    ? apiClient.get(`/trip/${vehicle.tripId}/progress`)
-                                    : Promise.resolve(null),
-                                vehicle.tripId
-                                    ? apiClient.get(`/trip/${vehicle.tripId}/eta`)
-                                    : Promise.resolve(null)
-                            ]);
-
-                            const route = routeRes.status === 'fulfilled' && routeRes.value.data.success
-                                ? routeRes.value.data.data.route || []
-                                : [];
-
-                            const progressFromApi =
-                                progressRes.status === 'fulfilled' &&
-                                progressRes.value?.data?.success &&
-                                Number.isFinite(Number(progressRes.value.data.data?.progressPercentage))
-                                    ? Number(progressRes.value.data.data.progressPercentage)
-                                    : estimateProgressFromRoute(route, Number(vehicle.latitude), Number(vehicle.longitude));
-
-                            const etaMinutes =
-                                etaRes.status === 'fulfilled' &&
-                                etaRes.value?.data?.success &&
-                                Number.isFinite(Number(etaRes.value.data.data?.etaMinutes))
-                                    ? Number(etaRes.value.data.data.etaMinutes)
-                                    : null;
-
-                            const source = VEHICLE_ROUTE_LABELS[vehicle.vehicleId]?.source || 'Route Start';
-                            const destination = VEHICLE_ROUTE_LABELS[vehicle.vehicleId]?.destination || 'Route End';
-                            const startPoint = route[0];
-                            const endPoint = route[route.length - 1];
-
-                            return {
-                                trip_id: vehicle.tripId || `IDLE_${vehicle.vehicleId}`,
-                                truck_number: vehicle.vehicleId,
-                                source,
-                                destination,
-                                status: vehicle.status,
-                                start_coord: startPoint
-                                    ? {
-                                        latitude: Number(startPoint.latitude),
-                                        longitude: Number(startPoint.longitude)
-                                    }
-                                    : {
-                                        latitude: Number(vehicle.latitude),
-                                        longitude: Number(vehicle.longitude)
-                                    },
-                                current_coord: {
-                                    latitude: Number(vehicle.latitude),
-                                    longitude: Number(vehicle.longitude)
-                                },
-                                end_coord: endPoint
-                                    ? {
-                                        latitude: Number(endPoint.latitude),
-                                        longitude: Number(endPoint.longitude)
-                                    }
-                                    : {
-                                        latitude: Number(vehicle.latitude),
-                                        longitude: Number(vehicle.longitude)
-                                    },
-                                progress_percent: Number(progressFromApi.toFixed(1)),
-                                speed_kmph: Number((Number(vehicle.speed) || 0).toFixed(1)),
-                                ignition: Boolean(vehicle.ignition),
-                                eta_minutes: etaMinutes,
-                                eta_text: formatEtaMinutes(etaMinutes),
-                                delay_risk: getDelayRisk(etaMinutes, vehicle.status),
-                                last_reported_at: vehicle.timestamp
-                            };
-                        })
-                    );
-
-                    const fleet = detailedFleetSettled
-                        .filter((item) => item.status === 'fulfilled')
-                        .map((item) => item.value)
-                        .filter((vehicle) => vehicle.status === 'in_progress');
-
-                    const etaValues = fleet
-                        .map((item) => item.eta_minutes)
-                        .filter((value) => Number.isFinite(value) && value >= 0);
-
-                    const averageEtaMinutes = etaValues.length
-                        ? etaValues.reduce((sum, value) => sum + value, 0) / etaValues.length
-                        : null;
-
-                    setFleetMeta({
-                        fleet,
-                        running_count: fleet.length,
-                        delayed_count: fleet.filter((vehicle) => vehicle.delay_risk === 'high').length,
-                        average_eta_minutes: averageEtaMinutes !== null ? Number(averageEtaMinutes.toFixed(1)) : null,
-                        average_eta_text: formatEtaMinutes(averageEtaMinutes)
-                    });
-                } else {
-                    setFleetMeta({
-                        fleet: [],
-                        running_count: 0,
-                        delayed_count: 0,
-                        average_eta_minutes: null,
-                        average_eta_text: 'No ETA data'
-                    });
-                }
             } catch (error) {
                 if (!cancelled) {
-                    console.error('Error fetching dashboard:', error);
+                    console.error('Error fetching dashboard summary:', error);
                 }
             } finally {
                 if (showLoader && !cancelled) {
@@ -280,8 +634,8 @@ function AdminDashboard() {
             }
         };
 
-        fetchAll(true);
-        const intervalId = window.setInterval(() => fetchAll(false), 30000);
+        fetchSummary(true);
+        const intervalId = window.setInterval(() => fetchSummary(false), 30000);
 
         return () => {
             cancelled = true;
@@ -289,9 +643,40 @@ function AdminDashboard() {
         };
     }, []);
 
-    const fmt = (v) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v || 0);
-    const num = (v) => new Intl.NumberFormat('en-IN').format(v || 0);
-    const L = loading ? '-' : null;
+    useEffect(() => {
+        loadIntelligence(true);
+        const intervalId = window.setInterval(() => loadIntelligence(false), 30000);
+
+        return () => window.clearInterval(intervalId);
+    }, [loadIntelligence]);
+
+    const markBookingSeen = (bookingId) => {
+        const next = new Set(seenBookingIds);
+        next.add(String(bookingId));
+        writeSeenBookingIds(next);
+        setSeenBookingIds(next);
+    };
+
+    const markBookingUnseen = (bookingId) => {
+        const next = new Set(seenBookingIds);
+        next.delete(String(bookingId));
+        writeSeenBookingIds(next);
+        setSeenBookingIds(next);
+    };
+
+    const clearSeenBookings = () => {
+        writeSeenBookingIds(new Set());
+        setSeenBookingIds(new Set());
+    };
+
+    const fmt = (value) => new Intl.NumberFormat('en-IN', {
+        style: 'currency',
+        currency: 'INR',
+        maximumFractionDigits: 0
+    }).format(value || 0);
+
+    const formatNumber = (value) => new Intl.NumberFormat('en-IN').format(value || 0);
+    const loadingValue = loading ? '-' : null;
 
     const tc = data?.trip_counts || {};
     const ts = data?.truck_status || {};
@@ -307,145 +692,72 @@ function AdminDashboard() {
         ? ((Number(data.total_revenue) / Number(data.total_invoiced)) * 100)
         : 0;
 
-    const completionRate = tc.total > 0 ? ((tc.completed / tc.total) * 100) : 0;
-    const utilizationRate = ts.total > 0 ? (((ts.Assigned + ts.Maintenance) / ts.total) * 100) : 0;
-
-    const expenseByMonth = (data?.monthly_expenses || []).reduce((acc, m) => {
-        acc[m.month] = parseFloat(m.total) || 0;
+    const monthlyExpensesByMonth = (data?.monthly_expenses || []).reduce((acc, month) => {
+        acc[month.month] = parseFloat(month.total) || 0;
         return acc;
     }, {});
 
-    const liveFleet = fleetMeta.fleet || [];
-    const liveMapPoints = liveFleet.flatMap((vehicle) => [
-        vehicle.start_coord,
-        vehicle.current_coord,
-        vehicle.end_coord
-    ].filter(Boolean));
-
-    const liveMapBounds = liveMapPoints.length > 0
-        ? liveMapPoints.reduce((acc, point) => ({
-            minLat: Math.min(acc.minLat, point.latitude),
-            maxLat: Math.max(acc.maxLat, point.latitude),
-            minLng: Math.min(acc.minLng, point.longitude),
-            maxLng: Math.max(acc.maxLng, point.longitude)
-        }), {
-            minLat: liveMapPoints[0].latitude,
-            maxLat: liveMapPoints[0].latitude,
-            minLng: liveMapPoints[0].longitude,
-            maxLng: liveMapPoints[0].longitude
-        })
-        : null;
-
-    const projectMapPoint = (point) => {
-        if (!point || !liveMapBounds) {
-            return null;
-        }
-
-        const latRange = Math.max(liveMapBounds.maxLat - liveMapBounds.minLat, 0.1);
-        const lngRange = Math.max(liveMapBounds.maxLng - liveMapBounds.minLng, 0.1);
-
-        const x = 8 + (((point.longitude - liveMapBounds.minLng) / lngRange) * 84);
-        const y = 12 + ((1 - ((point.latitude - liveMapBounds.minLat) / latRange)) * 74);
-
-        return {
-            x: Number(x.toFixed(2)),
-            y: Number(y.toFixed(2))
-        };
-    };
-
-    const getVehicleTone = (delayRisk) => {
-        if (delayRisk === 'high') return 'vehicle-danger';
-        if (delayRisk === 'medium') return 'vehicle-warning';
-        return 'vehicle-info';
-    };
-
-    const getDelayLabel = (delayRisk) => {
-        if (delayRisk === 'high') return 'Delay Risk';
-        if (delayRisk === 'medium') return 'Watch ETA';
-        return 'On Track';
-    };
-
-    const monthlyCombined = (data?.monthly_trips || []).map((m) => ({
-        month: m.month,
-        month_label: m.month_label,
-        revenue: parseFloat(m.revenue) || 0,
-        completed: Number(m.completed) || 0,
-        expenses: expenseByMonth[m.month] || 0
+    const monthlyCombined = (data?.monthly_trips || []).map((month) => ({
+        month: month.month,
+        month_label: month.month_label,
+        revenue: parseFloat(month.revenue) || 0,
+        completed: Number(month.completed) || 0,
+        expenses: monthlyExpensesByMonth[month.month] || 0
     }));
 
-    const maxMonthRevenue = Math.max(...monthlyCombined.map(m => m.revenue), 1);
-    const maxMonthExpense = Math.max(...monthlyCombined.map(m => m.expenses), 1);
-
-    const alertItems = [
-        {
-            level: 'critical',
-            title: 'Pending Collections',
-            message: `${L || fmt(data?.total_outstanding)} is pending from customers`,
-            meta: `${L || ic.pending || 0} invoices pending`
-        },
-        {
-            level: 'warning',
-            title: 'Maintenance Queue',
-            message: `${L || ts.Maintenance || 0} trucks are under maintenance`,
-            meta: 'Track expected service completion'
-        },
-        {
-            level: fleetMeta.delayed_count > 0 ? 'warning' : 'info',
-            title: 'Live Tracking',
-            message: liveFleet.length > 0
-                ? `${liveFleet.length} vehicles are reporting live mock GPS positions`
-                : 'No running trips are available for live tracking',
-            meta: liveFleet.length > 0
-                ? `${fleetMeta.average_eta_text} average ETA`
-                : 'Start a running trip to begin mock tracking'
-        },
-        {
-            level: 'neutral',
-            title: 'Route Reliability',
-            message: `${L || tc.completed || 0} trips completed successfully`,
-            meta: `${completionRate.toFixed(1)}% completion rate`
-        }
-    ];
+    const maxTrendValue = Math.max(...monthlyCombined.flatMap((month) => [month.revenue, month.expenses]), 1);
+    const fleetUtilizationPercent = Math.min(
+        100,
+        Math.round(
+            ((Number(ts.Assigned || 0) + Number(ts.Maintenance || 0)) /
+                Math.max(Number(ts.total || fleetStats.trucks || 1), 1)) * 100
+        )
+    );
 
     return (
         <>
             <header className="dashboard-header dashboard-header-premium">
                 <div>
                     <h1>Dashboard Overview</h1>
-                    <p>Welcome back, {user?.name}. Here is your live operations intelligence.</p>
+                    <p>Welcome back, {user?.name}. Important operations and intelligence are prioritized below.</p>
                 </div>
-                <div className="dashboard-date-chip">{dashboardDate}</div>
+                <div className="dashboard-header-actions">
+                    <Link to="/dashboard/admin/live-tracking" className="dashboard-inline-link">Live Fleet Tracking</Link>
+                    <div className="dashboard-date-chip">{dashboardDate}</div>
+                </div>
             </header>
 
             <section className="analytics-kpi-row analytics-kpi-row-premium">
                 <div className="analytics-kpi-card kpi-revenue premium-kpi-card">
                     <div className="kpi-icon"><AdminKpiSvg kind="revenue" /></div>
                     <div className="kpi-content">
-                        <span className="kpi-value">{L || fmt(data?.total_revenue)}</span>
+                        <span className="kpi-value">{loadingValue || fmt(data?.total_revenue)}</span>
                         <span className="kpi-label">Total Revenue</span>
                     </div>
                     <span className="kpi-trend kpi-trend-up">{collectionRate.toFixed(1)}% collected</span>
                 </div>
+
                 <div className="analytics-kpi-card kpi-outstanding premium-kpi-card">
                     <div className="kpi-icon"><AdminKpiSvg kind="outstanding" /></div>
                     <div className="kpi-content">
-                        <span className="kpi-value">{L || fmt(data?.total_outstanding)}</span>
+                        <span className="kpi-value">{loadingValue || fmt(data?.total_outstanding)}</span>
                         <span className="kpi-label">Outstanding</span>
                     </div>
-                    <span className="kpi-trend kpi-trend-warn">{L || ic.pending || 0} pending</span>
+                    <span className="kpi-trend kpi-trend-warn">{loadingValue || ic.pending || 0} pending</span>
                 </div>
+
                 <div className="analytics-kpi-card kpi-expenses premium-kpi-card">
                     <div className="kpi-icon"><AdminKpiSvg kind="expenses" /></div>
                     <div className="kpi-content">
-                        <span className="kpi-value">{L || fmt(data?.total_expenses)}</span>
+                        <span className="kpi-value">{loadingValue || fmt(data?.total_expenses)}</span>
                         <span className="kpi-label">Total Expenses</span>
                     </div>
-                    <span className="kpi-trend">{L || (data?.expense_categories?.length || 0)} categories</span>
                 </div>
+
                 <div className={`analytics-kpi-card premium-kpi-card ${(data?.net_profit || 0) >= 0 ? 'kpi-profit' : 'kpi-loss'}`}>
                     <div className="kpi-icon"><AdminKpiSvg kind="profit" /></div>
                     <div className="kpi-content">
-                        <span className="kpi-value">{L || fmt(data?.net_profit)}</span>
+                        <span className="kpi-value">{loadingValue || fmt(data?.net_profit)}</span>
                         <span className="kpi-label">Net Profit</span>
                     </div>
                     <span className={`kpi-trend ${(data?.net_profit || 0) >= 0 ? 'kpi-trend-up' : 'kpi-trend-down'}`}>
@@ -454,156 +766,305 @@ function AdminDashboard() {
                 </div>
             </section>
 
-            <section className="premium-health-row">
-                <article className="health-pill">
-                    <span>Trip Completion</span>
-                    <strong>{completionRate.toFixed(1)}%</strong>
-                </article>
-                <article className="health-pill">
-                    <span>Fleet Utilization</span>
-                    <strong>{utilizationRate.toFixed(1)}%</strong>
-                </article>
-                <article className="health-pill">
-                    <span>Collection Efficiency</span>
-                    <strong>{collectionRate.toFixed(1)}%</strong>
-                </article>
+            <section className="analytics-card">
+                <div className="analytics-card-header-row">
+                    <h3 className="analytics-card-title">Operational Intelligence</h3>
+                    <button
+                        type="button"
+                        className="intel-refresh-btn"
+                        onClick={() => loadIntelligence(false)}
+                        disabled={intelRefreshing || intelLoading}
+                    >
+                        {intelRefreshing ? 'Refreshing...' : 'Refresh Intelligence'}
+                    </button>
+                </div>
+
+                {intelNotice.text && (
+                    <div className={`intel-notice ${intelNotice.type}`}>
+                        {intelNotice.text}
+                    </div>
+                )}
+
+                {intelError && (
+                    <p className="analytics-empty">{intelError}</p>
+                )}
+
+                <div className="dashboard-service-status-row">
+                    <ServiceStatusBadge label="Booking Service" status={serviceStatus.booking} />
+                    <ServiceStatusBadge label="Analytics Service" status={serviceStatus.analytics} />
+                    <ServiceStatusBadge label="Alert Service" status={serviceStatus.alerts} />
+                </div>
+
+                <div className="intel-kpi-mini-grid">
+                    <article className="intel-kpi-mini-card">
+                        <span className="intel-kpi-mini-label">Live Running Trips</span>
+                        <strong className="intel-kpi-mini-value">{overallKpis.runningTrips}</strong>
+                    </article>
+                    <article className="intel-kpi-mini-card">
+                        <span className="intel-kpi-mini-label">Pending Bookings</span>
+                        <strong className="intel-kpi-mini-value">{overallKpis.pendingBookings}</strong>
+                    </article>
+                    <article className="intel-kpi-mini-card">
+                        <span className="intel-kpi-mini-label">Delay Warnings</span>
+                        <strong className="intel-kpi-mini-value">{overallKpis.highDelayWarnings}</strong>
+                    </article>
+                    <article className="intel-kpi-mini-card">
+                        <span className="intel-kpi-mini-label">Average ETA</span>
+                        <strong className="intel-kpi-mini-value">{overallKpis.avgEta ? formatEtaMinutes(overallKpis.avgEta) : 'N/A'}</strong>
+                    </article>
+                    <article className="intel-kpi-mini-card">
+                        <span className="intel-kpi-mini-label">Average Progress</span>
+                        <strong className="intel-kpi-mini-value">{overallKpis.avgProgress}%</strong>
+                    </article>
+                    <article className="intel-kpi-mini-card">
+                        <span className="intel-kpi-mini-label">Trucks Reporting</span>
+                        <strong className="intel-kpi-mini-value">{overallKpis.reportingTrucks}</strong>
+                    </article>
+                </div>
             </section>
 
-            <div className="premium-visual-grid">
-                <section className="analytics-card premium-map-panel">
-                    <div className="premium-panel-header">
-                        <h3 className="analytics-card-title">Live Fleet Tracking</h3>
-                        <span className="premium-badge">{liveFleet.length > 0 ? 'Mock GPS + ETA Live' : 'Awaiting running trips'}</span>
+            <p className="analytics-section-title">Action Queue</p>
+            <section className="analytics-card" style={{ marginTop: '1.25rem' }}>
+                <div className="analytics-card-header-row">
+                    <h3 className="analytics-card-title">Pending Booking Requests</h3>
+                    <div className="dashboard-card-meta">
+                        <ServiceStatusBadge label="Booking" status={serviceStatus.booking} compact />
+                        <span className="premium-badge muted">{unseenBookingsCount} unseen / {bookings.length} total</span>
+                        <button
+                            type="button"
+                            className="intel-action-btn clear"
+                            onClick={clearSeenBookings}
+                            disabled={seenBookingIds.size === 0}
+                        >
+                            Clear Seen
+                        </button>
+                        <button
+                            type="button"
+                            className="intel-action-btn toggle"
+                            onClick={() => setShowSeenBookings((current) => !current)}
+                        >
+                            {showSeenBookings ? 'Hide Seen' : 'Show Seen'}
+                        </button>
                     </div>
-                    <div className="map-canvas-shell" role="img" aria-label="Live fleet tracking overview with mock GPS positions and ETA forecast">
-                        <div className="map-grid-overlay" />
-                        {liveFleet.length > 0 ? (
-                            <>
-                                <svg className="fleet-map-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-                                    {liveFleet.map((vehicle) => {
-                                        const start = projectMapPoint(vehicle.start_coord);
-                                        const current = projectMapPoint(vehicle.current_coord);
-                                        const end = projectMapPoint(vehicle.end_coord);
+                </div>
+                {serviceStatus.booking.state !== 'live' && bookings.length > 0 && (
+                    <p className="service-status-note">
+                        Booking service is not fully live; showing last synchronized request queue.
+                    </p>
+                )}
+                <div className="dashboard-table-wrap">
+                    <table className="data-table">
+                        <thead>
+                            <tr>
+                                <th>Customer</th>
+                                <th>Request</th>
+                                <th>Booking</th>
+                                <th>Seen</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {visibleBookings.map((booking) => {
+                                const isSeen = seenBookingIds.has(String(booking.id));
 
-                                        if (!start || !current || !end) {
-                                            return null;
-                                        }
+                                return (
+                                <tr key={booking.id}>
+                                    <td>
+                                        <strong>{booking.customer_name}</strong>
+                                        <br />
+                                        {booking.contact_number}
+                                    </td>
+                                    <td>
+                                        #{booking.id} • {booking.pickup_location} - {booking.destination}
+                                        <br />
+                                        {booking.load_type}, {booking.weight} tons
+                                    </td>
+                                    <td>
+                                        INR {Number(booking.offered_price || 0).toLocaleString('en-IN')}
+                                        <br />
+                                        Pickup {booking.pickup_date ? new Date(booking.pickup_date).toLocaleDateString('en-IN') : 'N/A'}
+                                    </td>
+                                    <td>
+                                        <button
+                                            type="button"
+                                            className={`intel-action-btn ${isSeen ? 'toggle' : 'clear'}`}
+                                            onClick={() => (isSeen ? markBookingUnseen(booking.id) : markBookingSeen(booking.id))}
+                                        >
+                                            {isSeen ? 'Mark Unseen' : 'Mark Seen'}
+                                        </button>
+                                    </td>
+                                </tr>
+                                );
+                            })}
+                            {visibleBookings.length === 0 && (
+                                <tr>
+                                    <td colSpan="4">No booking requests to display.</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
 
-                                        return (
-                                            <g key={`route-${vehicle.trip_id}`}>
-                                                <line className="fleet-route-base" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
-                                                <line className="fleet-route-progress" x1={start.x} y1={start.y} x2={current.x} y2={current.y} />
-                                            </g>
-                                        );
-                                    })}
-                                </svg>
-
-                                {liveFleet.map((vehicle) => {
-                                    const start = projectMapPoint(vehicle.start_coord);
-                                    const current = projectMapPoint(vehicle.current_coord);
-                                    const end = projectMapPoint(vehicle.end_coord);
-
-                                    if (!start || !current || !end) {
-                                        return null;
-                                    }
-
-                                    return (
-                                        <div key={`vehicle-${vehicle.trip_id}`}>
-                                            <span
-                                                className="fleet-endpoint"
-                                                style={{ left: `${start.x}%`, top: `${start.y}%` }}
-                                                title={vehicle.source}
-                                            />
-                                            <span
-                                                className="fleet-endpoint fleet-endpoint--destination"
-                                                style={{ left: `${end.x}%`, top: `${end.y}%` }}
-                                                title={vehicle.destination}
-                                            />
-                                            <div
-                                                className={`fleet-vehicle-pin ${getVehicleTone(vehicle.delay_risk)}`}
-                                                style={{ left: `${current.x}%`, top: `${current.y}%` }}
-                                                title={`${vehicle.truck_number} | ${vehicle.eta_text}`}
-                                            >
-                                                <span className="fleet-vehicle-dot" />
-                                                <div className="fleet-vehicle-label">
-                                                    <strong>{vehicle.truck_number}</strong>
-                                                    <span>{vehicle.eta_text}</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </>
-                        ) : (
-                            <div className="fleet-map-empty">
-                                <div>
-                                    <strong>No live fleet positions</strong>
-                                    <p>Start a trip to let the mock GPS engine emit positions and ETA forecasts.</p>
-                                </div>
-                            </div>
-                        )}
+            <p className="analytics-section-title">Operations Snapshot</p>
+            <div className="analytics-two-col" style={{ marginTop: '1.25rem' }}>
+                <section className="analytics-card">
+                    <div className="analytics-card-header-row">
+                        <h3 className="analytics-card-title">Fleet Status</h3>
+                        <span className="premium-badge muted">{loadingValue || fleetStats.trucks} trucks</span>
                     </div>
-                    <div className="map-insight-row">
-                        <div className="map-insight-item"><span>Running Trips</span><strong>{L || fleetMeta.running_count || 0}</strong></div>
-                        <div className="map-insight-item"><span>Delay Risk</span><strong>{L || fleetMeta.delayed_count || 0}</strong></div>
-                        <div className="map-insight-item"><span>Average ETA</span><strong>{loading ? '-' : fleetMeta.average_eta_text}</strong></div>
+                    <div className="fleet-status-concise-grid">
+                        <article className="fleet-status-concise-item">
+                            <span>Available</span>
+                            <strong className="fleet-available">{loadingValue || ts.Available || 0}</strong>
+                        </article>
+                        <article className="fleet-status-concise-item">
+                            <span>Assigned</span>
+                            <strong className="fleet-assigned">{loadingValue || ts.Assigned || 0}</strong>
+                        </article>
+                        <article className="fleet-status-concise-item">
+                            <span>Maintenance</span>
+                            <strong className="fleet-maintenance">{loadingValue || ts.Maintenance || 0}</strong>
+                        </article>
+                        <article className="fleet-status-concise-item">
+                            <span>Drivers</span>
+                            <strong>{loadingValue || fleetStats.drivers || 0}</strong>
+                        </article>
                     </div>
-                    {liveFleet.length > 0 && (
-                        <div className="fleet-live-list">
-                            {liveFleet.slice(0, 4).map((vehicle) => (
-                                <article key={`summary-${vehicle.trip_id}`} className="fleet-live-card">
-                                    <div className="fleet-live-card-head">
-                                        <div>
-                                            <strong>{vehicle.truck_number}</strong>
-                                            <div className="fleet-live-card-route">{vehicle.source}{' -> '}{vehicle.destination}</div>
-                                        </div>
-                                        <span className={`fleet-risk-badge risk-${vehicle.delay_risk}`}>{getDelayLabel(vehicle.delay_risk)}</span>
-                                    </div>
-                                    <div className="fleet-live-metrics">
-                                        <div className="fleet-live-metric">
-                                            <span>Speed</span>
-                                            <strong>{vehicle.speed_kmph} km/h</strong>
-                                        </div>
-                                        <div className="fleet-live-metric">
-                                            <span>Progress</span>
-                                            <strong>{vehicle.progress_percent}%</strong>
-                                        </div>
-                                        <div className="fleet-live-metric">
-                                            <span>ETA</span>
-                                            <strong>{vehicle.eta_text}</strong>
-                                        </div>
-                                    </div>
-                                    <div className="fleet-live-meta">
-                                        <span>{vehicle.ignition ? 'Ignition on' : 'Ignition off'}</span>
-                                        <span>{new Date(vehicle.last_reported_at).toLocaleTimeString()}</span>
-                                    </div>
-                                </article>
-                            ))}
-                        </div>
-                    )}
+                    <p className="fleet-status-concise-note">
+                        Total fleet utilization: {loadingValue || `${fleetUtilizationPercent}%`}
+                    </p>
                 </section>
 
-                <section className="analytics-card premium-alert-panel">
-                    <h3 className="analytics-card-title">Alerts & Notifications</h3>
-                    <div className="premium-alert-list">
-                        {alertItems.map((item, index) => (
-                            <article key={index} className={`premium-alert-item alert-${item.level}`}>
-                                <div>
-                                    <strong>{item.title}</strong>
-                                    <p>{item.message}</p>
-                                </div>
-                                <small>{item.meta}</small>
-                            </article>
-                        ))}
+                <section className="analytics-card">
+                    <h3 className="analytics-card-title">Trip Overview</h3>
+                    <div className="trip-breakdown-grid">
+                        <div className="trip-breakdown-item">
+                            <span className="trip-breakdown-value">{loadingValue || tc.total}</span>
+                            <span className="trip-breakdown-label">Total</span>
+                        </div>
+                        <div className="trip-breakdown-item">
+                            <span className="trip-breakdown-value tb-running">{loadingValue || tc.running}</span>
+                            <span className="trip-breakdown-label">Running</span>
+                        </div>
+                        <div className="trip-breakdown-item">
+                            <span className="trip-breakdown-value tb-planned">{loadingValue || tc.planned}</span>
+                            <span className="trip-breakdown-label">Planned</span>
+                        </div>
+                        <div className="trip-breakdown-item">
+                            <span className="trip-breakdown-value tb-cancelled">{loadingValue || tc.cancelled}</span>
+                            <span className="trip-breakdown-label">Cancelled</span>
+                        </div>
+                    </div>
+                    <div className="trip-extra-stats">
+                        <div><span className="extra-label">Total Distance</span><span className="extra-value">{loadingValue || `${formatNumber(data?.total_distance)} km`}</span></div>
+                        <div><span className="extra-label">Avg Freight</span><span className="extra-value">{loadingValue || fmt(data?.avg_freight)}</span></div>
+                        <div><span className="extra-label">Avg Dead Mileage</span><span className="extra-value">{loadingValue || `${Number(data?.average_dead_mileage_percent || 0).toFixed(1)}%`}</span></div>
                     </div>
                 </section>
             </div>
 
-            <div className="premium-bottom-grid">
+            <p className="analytics-section-title">Live Monitoring</p>
+            <section className="analytics-card" style={{ marginTop: '1.25rem' }}>
+                <div className="analytics-card-header-row">
+                    <h3 className="analytics-card-title">Trip Progress, ETA, Delay Prediction</h3>
+                    <span className="premium-badge muted">{liveVehicles.length} live vehicles / {tripInsights.length} trip rows</span>
+                </div>
+                <div className="dashboard-table-wrap">
+                    <table className="data-table">
+                        <thead>
+                            <tr>
+                                <th>Trip</th>
+                                <th>Route</th>
+                                <th>Progress</th>
+                                <th>ETA</th>
+                                <th>Delay Risk</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {tripInsights.map((trip) => {
+                                const riskTier = getRiskTier(trip.delay_risk_percentage);
+                                return (
+                                    <tr key={trip.trip_id}>
+                                        <td>#{trip.trip_id} / Truck {trip.truck_id}</td>
+                                        <td>{trip.source} - {trip.destination}</td>
+                                        <td>{roundTo(trip.progress_percent, 1)}%</td>
+                                        <td>{formatEtaMinutes(trip.eta_minutes)}</td>
+                                        <td>
+                                            <span className={`intel-risk-chip ${riskTier}`}>
+                                                {roundTo(trip.delay_risk_percentage, 1)}%
+                                            </span>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                            {tripInsights.length === 0 && (
+                                <tr>
+                                    <td colSpan="5">No running trips are currently streaming GPS logs.</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <p className="analytics-section-title">Exceptions</p>
+            <div className="analytics-two-col" style={{ marginTop: '1.25rem' }}>
+                <section className="analytics-card">
+                    <div className="analytics-card-header-row">
+                        <h3 className="analytics-card-title">Fuel Anomalies</h3>
+                        <ServiceStatusBadge label="Analytics" status={serviceStatus.analytics} compact />
+                    </div>
+                    <ul className="intel-list-compact">
+                        {fuelAnomalies.map((item) => (
+                            <li key={item.trip_id}>
+                                Trip #{item.trip_id}: actual {item.actual_fuel}L vs expected {item.expected_fuel}L
+                            </li>
+                        ))}
+                        {fuelAnomalies.length === 0 && <li>No fuel anomalies detected.</li>}
+                    </ul>
+                </section>
+
+                <section className="analytics-card">
+                    <div className="analytics-card-header-row">
+                        <h3 className="analytics-card-title">Operational Alerts</h3>
+                        <ServiceStatusBadge label="Alerts" status={serviceStatus.alerts} compact />
+                    </div>
+                    <ul className="intel-list-compact">
+                        {operationalAlerts.slice(0, 18).map((alert, index) => (
+                            <li key={alert.id || `${alert.alert_type}-${index}`}>
+                                <strong>{alert.truck_number ? `Truck ${alert.truck_number}` : 'System'}</strong>
+                                {' • '}
+                                <span>{alert.alert_type}</span>
+                                {': '}
+                                {alert.description}
+                            </li>
+                        ))}
+                        {operationalAlerts.length === 0 && <li>No operational alerts available.</li>}
+                    </ul>
+                </section>
+            </div>
+
+            <section className="analytics-card" style={{ marginTop: '1.25rem' }}>
+                <div className="analytics-card-header-row">
+                    <h3 className="analytics-card-title">Backhaul Opportunities</h3>
+                    <ServiceStatusBadge label="Analytics" status={serviceStatus.analytics} compact />
+                </div>
+                <ul className="intel-list-compact">
+                    {backhaulSuggestions.map((item) => (
+                        <li key={`${item.trip_id}-${item.booking_id}`}>
+                            Truck {item.truck_id}: pickup within {item.distance_to_pickup_km} km for booking #{item.booking_id}
+                        </li>
+                    ))}
+                    {backhaulSuggestions.length === 0 && <li>No backhaul opportunities found right now.</li>}
+                </ul>
+            </section>
+
+            <p className="analytics-section-title">Performance Insights</p>
+            <div className="premium-bottom-grid" style={{ marginTop: '1.25rem' }}>
                 <section className="analytics-card premium-activity-table-card">
                     <div className="premium-panel-header">
                         <h3 className="analytics-card-title">Recent Activity Table</h3>
-                        <span className="premium-badge muted">Last 5 completed trips</span>
+                        <span className="premium-badge muted">Latest updates</span>
                     </div>
                     <div className="premium-table-wrap">
                         <table className="data-table premium-table">
@@ -616,18 +1077,18 @@ function AdminDashboard() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {(data?.recent_completed || []).length > 0 ? (
-                                    data.recent_completed.map((trip) => (
-                                        <tr key={trip.trip_id}>
-                                            <td>{trip.end_time ? new Date(trip.end_time).toLocaleString() : '-'}</td>
-                                            <td>Trip Completed</td>
-                                            <td>{trip.lr_number} ({trip.source}{' -> '}{trip.destination})</td>
-                                            <td><span className="status-chip status-ok">Confirmed</span></td>
+                                {activity.length > 0 ? (
+                                    activity.map((item) => (
+                                        <tr key={item.notification_id}>
+                                            <td>{item.created_at ? new Date(item.created_at).toLocaleString() : '-'}</td>
+                                            <td>{item.type || 'Notification'}</td>
+                                            <td>{item.message}</td>
+                                            <td><span className="status-chip status-ok">Visible</span></td>
                                         </tr>
                                     ))
                                 ) : (
                                     <tr>
-                                        <td colSpan="4" className="empty-state">No recent completed trips</td>
+                                        <td colSpan="4" className="empty-state">No recent activity</td>
                                     </tr>
                                 )}
                             </tbody>
@@ -638,26 +1099,34 @@ function AdminDashboard() {
                 <section className="analytics-card premium-revenue-card">
                     <div className="premium-panel-header">
                         <h3 className="analytics-card-title">Revenue vs Expenses</h3>
-                        <span className="premium-badge muted">Monthly trend</span>
+                        <span className="premium-badge muted">Dual-lane trend view</span>
                     </div>
                     {monthlyCombined.length > 0 ? (
-                        <div className="premium-trend-list">
-                            {monthlyCombined.map((m, idx) => (
-                                <div className="premium-trend-row" key={idx}>
-                                    <div className="trend-head">
-                                        <span>{m.month_label}</span>
-                                        <strong>{fmt(m.revenue)}</strong>
+                        <div className="revexp-trend-alt">
+                            {monthlyCombined.map((month, index) => (
+                                <article className="revexp-alt-row" key={index}>
+                                    <div className="revexp-alt-head">
+                                        <strong>{month.month_label}</strong>
+                                        <span className={`revexp-net-chip ${(month.revenue - month.expenses) >= 0 ? 'positive' : 'negative'}`}>
+                                            {(month.revenue - month.expenses) >= 0 ? '+' : ''}{fmt(month.revenue - month.expenses)}
+                                        </span>
                                     </div>
-                                    <div className="trend-bars">
-                                        <div className="trend-bar-track">
-                                            <div className="trend-bar-fill trend-revenue" style={{ width: `${(m.revenue / maxMonthRevenue) * 100}%` }} />
+                                    <div className="revexp-alt-lane">
+                                        <span>Revenue</span>
+                                        <div className="revexp-alt-track">
+                                            <div className="revexp-alt-fill revenue" style={{ width: `${(month.revenue / maxTrendValue) * 100}%` }} />
                                         </div>
-                                        <div className="trend-bar-track">
-                                            <div className="trend-bar-fill trend-expense" style={{ width: `${(m.expenses / maxMonthExpense) * 100}%` }} />
-                                        </div>
+                                        <strong>{fmt(month.revenue)}</strong>
                                     </div>
-                                    <small>{m.completed} completed trips</small>
-                                </div>
+                                    <div className="revexp-alt-lane">
+                                        <span>Expense</span>
+                                        <div className="revexp-alt-track">
+                                            <div className="revexp-alt-fill expense" style={{ width: `${(month.expenses / maxTrendValue) * 100}%` }} />
+                                        </div>
+                                        <strong>{fmt(month.expenses)}</strong>
+                                    </div>
+                                    <small>{month.completed} completed trips</small>
+                                </article>
                             ))}
                         </div>
                     ) : (
@@ -666,203 +1135,23 @@ function AdminDashboard() {
                 </section>
             </div>
 
-            <div className="analytics-two-col">
-                <section className="analytics-card">
-                    <h3 className="analytics-card-title">Fleet Status</h3>
-                    <div className="fleet-status-grid">
-                        <div className="fleet-stat">
-                            <span className="fleet-stat-value">{L || fleetStats.trucks}</span>
-                            <span className="fleet-stat-label">Total Trucks</span>
-                        </div>
-                        <div className="fleet-stat">
-                            <span className="fleet-stat-value">{L || fleetStats.drivers}</span>
-                            <span className="fleet-stat-label">Total Drivers</span>
-                        </div>
-                        <div className="fleet-stat">
-                            <span className="fleet-stat-value fleet-available">{L || ts.Available}</span>
-                            <span className="fleet-stat-label">Available</span>
-                        </div>
-                        <div className="fleet-stat">
-                            <span className="fleet-stat-value fleet-assigned">{L || ts.Assigned}</span>
-                            <span className="fleet-stat-label">Assigned</span>
-                        </div>
-                        <div className="fleet-stat">
-                            <span className="fleet-stat-value fleet-maintenance">{L || ts.Maintenance}</span>
-                            <span className="fleet-stat-label">Maintenance</span>
-                        </div>
-                    </div>
-                    {/* Truck utilization bar */}
-                    {!loading && ts.total > 0 && (
-                        <div className="utilization-bar-wrap">
-                            <div className="utilization-label">Utilization</div>
-                            <div className="utilization-bar">
-                                <div className="utilization-segment seg-assigned" style={{ width: `${(ts.Assigned / ts.total) * 100}%` }} title={`Assigned: ${ts.Assigned}`} />
-                                <div className="utilization-segment seg-maintenance" style={{ width: `${(ts.Maintenance / ts.total) * 100}%` }} title={`Maintenance: ${ts.Maintenance}`} />
-                                <div className="utilization-segment seg-available" style={{ width: `${(ts.Available / ts.total) * 100}%` }} title={`Available: ${ts.Available}`} />
+            <section className="analytics-card" style={{ marginTop: '1.25rem' }}>
+                <h3 className="analytics-card-title">Top Routes</h3>
+                {data?.top_routes?.length > 0 ? (
+                    <div className="top-routes-list">
+                        {data.top_routes.map((route, index) => (
+                            <div key={index} className="route-row">
+                                <span className="route-rank">#{index + 1}</span>
+                                <div className="route-info">
+                                    <span className="route-path">{route.source} - {route.destination}</span>
+                                    <span className="route-meta">{route.trip_count} trips - {fmt(route.total_revenue)}</span>
+                                </div>
                             </div>
-                            <div className="utilization-legend">
-                                <span><i className="dot dot-assigned" /> Assigned</span>
-                                <span><i className="dot dot-maintenance" /> Maintenance</span>
-                                <span><i className="dot dot-available" /> Available</span>
-                            </div>
-                        </div>
-                    )}
-                </section>
-
-                <section className="analytics-card">
-                    <h3 className="analytics-card-title">Trip Overview</h3>
-                    <div className="trip-breakdown-grid">
-                        <div className="trip-breakdown-item">
-                            <span className="trip-breakdown-value">{L || tc.total}</span>
-                            <span className="trip-breakdown-label">Total</span>
-                        </div>
-                        <div className="trip-breakdown-item">
-                            <span className="trip-breakdown-value tb-running">{L || tc.running}</span>
-                            <span className="trip-breakdown-label">Running</span>
-                        </div>
-                        <div className="trip-breakdown-item">
-                            <span className="trip-breakdown-value tb-planned">{L || tc.planned}</span>
-                            <span className="trip-breakdown-label">Planned</span>
-                        </div>
-                        <div className="trip-breakdown-item">
-                            <span className="trip-breakdown-value tb-completed">{L || tc.completed}</span>
-                            <span className="trip-breakdown-label">Completed</span>
-                        </div>
-                        <div className="trip-breakdown-item">
-                            <span className="trip-breakdown-value tb-cancelled">{L || tc.cancelled}</span>
-                            <span className="trip-breakdown-label">Cancelled</span>
-                        </div>
+                        ))}
                     </div>
-                    <div className="trip-extra-stats">
-                        <div><span className="extra-label">Total Distance</span><span className="extra-value">{L || `${num(data?.total_distance)} km`}</span></div>
-                        <div><span className="extra-label">Avg Freight</span><span className="extra-value">{L || fmt(data?.avg_freight)}</span></div>
-                        <div><span className="extra-label">Avg Dead Mileage</span><span className="extra-value">{L || `${Number(data?.average_dead_mileage_percent || 0).toFixed(1)}%`}</span></div>
-                    </div>
-                </section>
-            </div>
-
-            <div className="analytics-three-col">
-                <section className="analytics-card">
-                    <h3 className="analytics-card-title">Expense Breakdown</h3>
-                    {data?.expense_categories?.length > 0 ? (
-                        <div className="category-list">
-                            {data.expense_categories.map((cat, i) => {
-                                const totalExp = parseFloat(data.total_expenses) || 1;
-                                const pct = ((parseFloat(cat.total) / totalExp) * 100).toFixed(1);
-                                return (
-                                    <div key={i} className="category-row">
-                                        <div className="category-info">
-                                            <span className="category-name">{cat.category}</span>
-                                            <span className="category-amount">{fmt(cat.total)}</span>
-                                        </div>
-                                        <div className="category-bar-track">
-                                            <div className="category-bar-fill" style={{ width: `${pct}%` }} />
-                                        </div>
-                                        <span className="category-pct">{pct}%</span>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    ) : (
-                        <p className="analytics-empty">No expenses recorded</p>
-                    )}
-                </section>
-
-                <section className="analytics-card">
-                    <h3 className="analytics-card-title">Invoice Status</h3>
-                    <div className="invoice-status-grid">
-                        <div className="invoice-stat">
-                            <span className="invoice-stat-value">{L || ic.total}</span>
-                            <span className="invoice-stat-label">Total</span>
-                        </div>
-                        <div className="invoice-stat inv-paid">
-                            <span className="invoice-stat-value">{L || ic.paid}</span>
-                            <span className="invoice-stat-label">Paid</span>
-                        </div>
-                        <div className="invoice-stat inv-partial">
-                            <span className="invoice-stat-value">{L || ic.partial}</span>
-                            <span className="invoice-stat-label">Partial</span>
-                        </div>
-                        <div className="invoice-stat inv-pending">
-                            <span className="invoice-stat-value">{L || ic.pending}</span>
-                            <span className="invoice-stat-label">Pending</span>
-                        </div>
-                    </div>
-                    <div className="invoice-total-row">
-                        <span>Total Invoiced</span>
-                        <strong>{L || fmt(data?.total_invoiced)}</strong>
-                    </div>
-                </section>
-
-                <section className="analytics-card">
-                    <h3 className="analytics-card-title">Top Routes</h3>
-                    {data?.top_routes?.length > 0 ? (
-                        <div className="top-routes-list">
-                            {data.top_routes.map((r, i) => (
-                                <div key={i} className="route-row">
-                                    <span className="route-rank">#{i + 1}</span>
-                                    <div className="route-info">
-                                        <span className="route-path">{r.source}{' -> '}{r.destination}</span>
-                                        <span className="route-meta">{r.trip_count} trips &middot; {fmt(r.total_revenue)}</span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <p className="analytics-empty">No route data yet</p>
-                    )}
-                </section>
-            </div>
-
-            <div className="analytics-two-col">
-                <section className="analytics-card">
-                    <h3 className="analytics-card-title">Recent Activity</h3>
-                    {activity.length > 0 ? (
-                        <div className="activity-feed">
-                            {activity.map(a => (
-                                <div key={a.notification_id} className={`activity-item activity-${a.type}`}>
-                                    <span className="activity-msg">{a.message}</span>
-                                    <small className="activity-time">{new Date(a.created_at).toLocaleString()}</small>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <p className="analytics-empty">No recent activity</p>
-                    )}
-                </section>
-
-                <section className="analytics-card">
-                    <h3 className="analytics-card-title">Recent Completed Trips</h3>
-                    {data?.recent_completed?.length > 0 ? (
-                        <div className="recent-trips-list">
-                            {data.recent_completed.map(t => (
-                                <div key={t.trip_id} className="recent-trip-row">
-                                    <div className="recent-trip-info">
-                                        <strong>{t.lr_number}</strong>
-                                        <span>{t.source}{' -> '}{t.destination}</span>
-                                    </div>
-                                    <div className="recent-trip-meta">
-                                        <span className="recent-trip-amount">{fmt(t.base_freight)}</span>
-                                        <small>{t.truck_number} &middot; {t.driver_name}</small>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <p className="analytics-empty">No completed trips yet</p>
-                    )}
-                </section>
-            </div>
-
-            <h3 className="analytics-section-title">Quick Actions</h3>
-            <section className="action-grid">
-                <Link to="/lorries" className="action-card"><h3>Lorries &rarr;</h3><p>Manage trucks, status & fitness expiry</p></Link>
-                <Link to="/drivers" className="action-card"><h3>Drivers &rarr;</h3><p>Register drivers and view details</p></Link>
-                <Link to="/trips" className="action-card"><h3>Trips &rarr;</h3><p>Create trips, track running lorries</p></Link>
-                <Link to="/fuel" className="action-card"><h3>Fuel &rarr;</h3><p>Fuel entries & efficiency analytics</p></Link>
-                <Link to="/maintenance" className="action-card"><h3>Maintenance &rarr;</h3><p>Vehicle servicing & fleet health</p></Link>
-                <Link to="/expenses" className="action-card"><h3>Expenses &rarr;</h3><p>Operational expense ledger</p></Link>
-                <Link to="/invoices" className="action-card"><h3>Invoices &rarr;</h3><p>Generate & track invoice payments</p></Link>
+                ) : (
+                    <p className="analytics-empty">No route data yet</p>
+                )}
             </section>
         </>
     );
