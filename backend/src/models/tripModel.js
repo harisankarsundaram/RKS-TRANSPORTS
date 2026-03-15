@@ -366,8 +366,8 @@ const TripModel = {
     async getMonthlyTrends() {
         const result = await pool.query(`
             WITH month_bucket AS (
-                SELECT (DATE_TRUNC('month', NOW()) - make_interval(months => gs.offset))::date AS month_start
-                FROM generate_series(5, 0, -1) AS gs(offset)
+                SELECT (DATE_TRUNC('month', NOW()) - (gs.month_offset * INTERVAL '1 month'))::date AS month_start
+                FROM generate_series(5, 0, -1) AS gs(month_offset)
             ),
             trip_agg AS (
                 SELECT
