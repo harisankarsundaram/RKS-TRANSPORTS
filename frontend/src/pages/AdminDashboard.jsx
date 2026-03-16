@@ -27,6 +27,20 @@ const SERVICE_STATUS_LABELS = {
     offline: 'Fallback'
 };
 
+const OPERATIONAL_ALERT_TYPES = new Set(['overspeed', 'idle_vehicle', 'no_progress_24h']);
+
+function isOperationalAlertType(alertType) {
+    return OPERATIONAL_ALERT_TYPES.has(String(alertType || '').toLowerCase());
+}
+
+function filterOperationalAlerts(alertRows) {
+    if (!Array.isArray(alertRows)) {
+        return [];
+    }
+
+    return alertRows.filter((alert) => isOperationalAlertType(alert?.alert_type));
+}
+
 function isStorageAvailable() {
     return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
 }
@@ -202,20 +216,6 @@ function formatEtaMinutes(minutes) {
     return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
 }
 
-function getRiskTier(delayRiskPercentage) {
-    const value = Number(delayRiskPercentage || 0);
-
-    if (value >= 60) {
-        return 'high';
-    }
-
-    if (value >= 35) {
-        return 'medium';
-    }
-
-    return 'low';
-}
-
 function AdminKpiSvg({ kind }) {
     const common = {
         width: 20,
@@ -309,7 +309,7 @@ function AdminDashboard() {
     const [bookings, setBookings] = useState(cacheSnapshot.bookings.data);
     const [fuelAnomalies, setFuelAnomalies] = useState(cacheSnapshot.fuelAnomalies.data);
     const [backhaulSuggestions, setBackhaulSuggestions] = useState(cacheSnapshot.backhaulSuggestions.data);
-    const [operationalAlerts, setOperationalAlerts] = useState(cacheSnapshot.operationalAlerts.data);
+    const [operationalAlerts, setOperationalAlerts] = useState(() => filterOperationalAlerts(cacheSnapshot.operationalAlerts.data));
     const [seenBookingIds, setSeenBookingIds] = useState(() => readSeenBookingIds());
     const [showSeenBookings, setShowSeenBookings] = useState(false);
 
@@ -332,17 +332,15 @@ function AdminDashboard() {
             .map((trip) => Number(trip.eta_minutes || 0))
             .filter((value) => Number.isFinite(value) && value > 0);
 
-        const highDelay = tripInsights.filter((trip) => Number(trip.delay_risk_percentage || 0) >= 60).length;
-
         return {
             runningTrips: tripInsights.length,
             avgProgress: roundTo(average(progressValues), 1),
             avgEta: etaValues.length > 0 ? roundTo(average(etaValues), 1) : null,
-            highDelayWarnings: highDelay,
+            operationalAlertCount: operationalAlerts.length,
             pendingBookings: bookings.filter((booking) => !seenBookingIds.has(String(booking.id))).length,
             reportingTrucks: liveVehicles.length
         };
-    }, [tripInsights, bookings, liveVehicles, seenBookingIds]);
+    }, [tripInsights, bookings, liveVehicles, seenBookingIds, operationalAlerts]);
 
     const loadIntelligence = useCallback(async (withLoader = false) => {
         if (withLoader) {
@@ -481,31 +479,32 @@ function AdminDashboard() {
             let alertStatus = createServiceStatus('fallback', 'Using backend fallback for alerts');
 
             if (alertsRes.status === 'fulfilled') {
-                alertData = alertsRes.value.data?.data || [];
+                alertData = filterOperationalAlerts(alertsRes.value.data?.data || []);
                 const updatedAt = writeDashboardCache(DASHBOARD_CACHE_KEYS.operationalAlerts, alertData);
                 alertStatus = createServiceStatus('live', `${alertData.length} alerts available`, updatedAt);
             } else {
                 const fallbackAlerts = await apiClient.get('/intelligence/alerts?limit=40').catch(() => null);
                 if (fallbackAlerts?.data?.success) {
-                    alertData = fallbackAlerts.data.data || [];
+                    alertData = filterOperationalAlerts(fallbackAlerts.data.data || []);
                     const updatedAt = writeDashboardCache(DASHBOARD_CACHE_KEYS.operationalAlerts, alertData);
                     alertStatus = createServiceStatus('fallback', `${alertData.length} alerts via backend intelligence`, updatedAt);
                 } else if (alertsCache.updatedAt) {
-                    alertData = alertsCache.data;
+                    alertData = filterOperationalAlerts(alertsCache.data);
                     alertStatus = createServiceStatus('cached', 'Using last known alert data', alertsCache.updatedAt);
                 } else {
                     alertStatus = createServiceStatus('fallback', 'No alert data yet');
                 }
             }
 
-            const normalizedAlertData = alertData.map((alert) => ({
-                ...alert,
-                truck_number: resolveTruckLabel({
-                    truckId: alert.truck_id,
-                    truckNumber: alert.truck_number,
-                    truckLookup: truckLabelLookup
-                })
-            }));
+            const normalizedAlertData = alertData
+                .map((alert) => ({
+                    ...alert,
+                    truck_number: resolveTruckLabel({
+                        truckId: alert.truck_id,
+                        truckNumber: alert.truck_number,
+                        truckLookup: truckLabelLookup
+                    })
+                }));
 
             setLiveVehicles(liveData);
             setBookings(pendingBookings);
@@ -515,35 +514,7 @@ function AdminDashboard() {
             const insights = await buildTripInsightsFromVehicles(liveData);
             setTripInsights(insights);
 
-            const derivedOperationalAlerts = normalizedAlertData.length > 0
-                ? normalizedAlertData
-                : [
-                    ...insights
-                        .filter((trip) => Number(trip.delay_risk_percentage || 0) >= 60)
-                        .map((trip) => ({
-                            id: `delay-${trip.trip_id}`,
-                            alert_type: 'delay_risk',
-                            truck_id: trip.truck_id,
-                            truck_number: resolveTruckLabel({
-                                truckId: trip.truck_id,
-                                truckNumber: null,
-                                truckLookup: truckLabelLookup
-                            }),
-                            description: `Trip ${trip.trip_id} is at ${roundTo(trip.delay_risk_percentage, 1)}% delay risk`
-                        })),
-                    ...(pendingBookings.length > 0
-                        ? [{
-                            id: 'pending-bookings',
-                            alert_type: 'pending_bookings',
-                            truck_number: 'System',
-                            description: `${pendingBookings.length} booking requests are pending approval`
-                        }]
-                        : [])
-                ];
-
-            if (alertData.length === 0 && derivedOperationalAlerts.length > 0 && alertStatus.state !== 'live') {
-                alertStatus = createServiceStatus('fallback', 'Derived from trip risk and booking backlog', alertStatus.updatedAt || null);
-            }
+            const derivedOperationalAlerts = normalizedAlertData;
 
             setOperationalAlerts(derivedOperationalAlerts);
             setServiceStatus({
@@ -818,8 +789,8 @@ function AdminDashboard() {
                         <strong className="intel-kpi-mini-value">{overallKpis.pendingBookings}</strong>
                     </article>
                     <article className="intel-kpi-mini-card">
-                        <span className="intel-kpi-mini-label">Delay Warnings</span>
-                        <strong className="intel-kpi-mini-value">{overallKpis.highDelayWarnings}</strong>
+                        <span className="intel-kpi-mini-label">Operational Alerts</span>
+                        <strong className="intel-kpi-mini-value">{overallKpis.operationalAlertCount}</strong>
                     </article>
                     <article className="intel-kpi-mini-card">
                         <span className="intel-kpi-mini-label">Average ETA</span>
@@ -1008,7 +979,7 @@ function AdminDashboard() {
             <p className="analytics-section-title">Live Monitoring</p>
             <section className="analytics-card" style={{ marginTop: '1.25rem' }}>
                 <div className="analytics-card-header-row">
-                    <h3 className="analytics-card-title">Trip Progress, ETA, Delay Prediction</h3>
+                    <h3 className="analytics-card-title">Trip Progress and ETA</h3>
                     <span className="premium-badge muted">{liveVehicles.length} live vehicles / {tripInsights.length} trip rows</span>
                 </div>
                 <div className="dashboard-table-wrap">
@@ -1019,29 +990,20 @@ function AdminDashboard() {
                                 <th>Route</th>
                                 <th>Progress</th>
                                 <th>ETA</th>
-                                <th>Delay Risk</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {tripInsights.map((trip) => {
-                                const riskTier = getRiskTier(trip.delay_risk_percentage);
-                                return (
-                                    <tr key={trip.trip_id}>
-                                        <td>#{trip.trip_id} / Truck {trip.truck_id}</td>
-                                        <td>{trip.source} - {trip.destination}</td>
-                                        <td>{roundTo(trip.progress_percent, 1)}%</td>
-                                        <td>{formatEtaMinutes(trip.eta_minutes)}</td>
-                                        <td>
-                                            <span className={`intel-risk-chip ${riskTier}`}>
-                                                {roundTo(trip.delay_risk_percentage, 1)}%
-                                            </span>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
+                            {tripInsights.map((trip) => (
+                                <tr key={trip.trip_id}>
+                                    <td>#{trip.trip_id} / Truck {trip.truck_id}</td>
+                                    <td>{trip.source} - {trip.destination}</td>
+                                    <td>{roundTo(trip.progress_percent, 1)}%</td>
+                                    <td>{formatEtaMinutes(trip.eta_minutes)}</td>
+                                </tr>
+                            ))}
                             {tripInsights.length === 0 && (
                                 <tr>
-                                    <td colSpan="5">No running trips are currently streaming GPS logs.</td>
+                                    <td colSpan="4">No running trips are currently streaming GPS logs.</td>
                                 </tr>
                             )}
                         </tbody>

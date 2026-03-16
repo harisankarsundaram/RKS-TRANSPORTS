@@ -1077,13 +1077,13 @@ async function seed() {
             },
             {
                 trip: runningTrips[0],
-                alert_type: 'delay_risk',
-                description: `${runningTrips[0].lr_number} has elevated delay risk due to congestion on NH44`
+                alert_type: 'idle_vehicle',
+                description: `${runningTrips[0].lr_number} has been idle for more than 30 minutes`
             },
             {
                 trip: runningTrips[1],
-                alert_type: 'route_deviation',
-                description: `${runningTrips[1].lr_number} deviated 1.9 km from planned route`
+                alert_type: 'no_progress_24h',
+                description: `${runningTrips[1].lr_number} has recorded no meaningful trip progress in the last 24 hours`
             },
             {
                 trip: tripByLr.get('RKS-24003'),
@@ -1120,7 +1120,7 @@ async function seed() {
             },
             {
                 user_id: adminUserId,
-                message: `Trip ${runningTrips[1].lr_number} raised route deviation alert`,
+                message: `Trip ${runningTrips[1].lr_number} raised no progress for 24 hours alert`,
                 type: 'alert',
                 related_trip_id: runningTrips[1].trip_id,
                 is_read: false,

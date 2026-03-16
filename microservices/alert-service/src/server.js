@@ -1,12 +1,11 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const axios = require('axios');
 const pool = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3108;
-const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
+const OPERATIONAL_ALERT_TYPES = ['overspeed', 'idle_vehicle', 'no_progress_24h'];
 
 app.use(cors());
 app.use(express.json());
@@ -29,41 +28,6 @@ function distanceKm(a, b) {
     return 6371 * (2 * Math.atan2(Math.sqrt(n), Math.sqrt(1 - n)));
 }
 
-function parsePolyline(raw) {
-    if (!raw) {
-        return [];
-    }
-
-    try {
-        const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed)) {
-            return [];
-        }
-
-        return parsed
-            .map((point) => {
-                if (Array.isArray(point) && point.length >= 2) {
-                    return {
-                        longitude: Number(point[0]),
-                        latitude: Number(point[1])
-                    };
-                }
-
-                if (point && point.longitude !== undefined && point.latitude !== undefined) {
-                    return {
-                        longitude: Number(point.longitude),
-                        latitude: Number(point.latitude)
-                    };
-                }
-
-                return null;
-            })
-            .filter((point) => Number.isFinite(point?.latitude) && Number.isFinite(point?.longitude));
-    } catch (error) {
-        return [];
-    }
-}
-
 function sumDistance(points) {
     if (!Array.isArray(points) || points.length < 2) {
         return 0;
@@ -74,21 +38,6 @@ function sumDistance(points) {
         sum += distanceKm(points[i - 1], points[i]);
     }
     return sum;
-}
-
-function minDistanceToRoute(point, route) {
-    if (!Array.isArray(route) || route.length === 0) {
-        return 0;
-    }
-
-    let best = Number.POSITIVE_INFINITY;
-    for (const routePoint of route) {
-        const d = distanceKm(point, routePoint);
-        if (d < best) {
-            best = d;
-        }
-    }
-    return best;
 }
 
 async function ensureSchema() {
@@ -114,16 +63,16 @@ async function ensureSchema() {
     `);
 }
 
-async function createAlertIfNotRecent({ truck_id, trip_id, alert_type, description }) {
+async function createAlertIfNotRecent({ truck_id, trip_id, alert_type, description, withinMinutes = 30 }) {
     const duplicate = await pool.query(
         `SELECT id
          FROM alerts
          WHERE truck_id = $1
            AND COALESCE(trip_id, -1) = COALESCE($2, -1)
            AND alert_type = $3
-           AND created_at >= NOW() - INTERVAL '30 minutes'
+                     AND created_at >= NOW() - ($4::text || ' minutes')::interval
          LIMIT 1`,
-        [truck_id, trip_id || null, alert_type]
+                [truck_id, trip_id || null, alert_type, withinMinutes]
     );
 
     if (duplicate.rows.length > 0) {
@@ -157,10 +106,6 @@ async function evaluateTrip(trip) {
     }
 
     const latest = latestResult.rows[0];
-    const currentPoint = {
-        latitude: Number(latest.latitude),
-        longitude: Number(latest.longitude)
-    };
     const currentSpeed = Number(latest.speed || 0);
 
     if (currentSpeed > 80) {
@@ -203,85 +148,47 @@ async function evaluateTrip(trip) {
         }
     }
 
-    const route = parsePolyline(trip.route_polyline);
-    if (route.length > 0) {
-        const deviationKm = minDistanceToRoute(currentPoint, route);
-        if (deviationKm > 1.5) {
+    const startedAtMs = trip.started_at ? new Date(trip.started_at).getTime() : NaN;
+    const tripAgeMs = Number.isFinite(startedAtMs) ? (Date.now() - startedAtMs) : (24 * 60 * 60 * 1000);
+
+    if (tripAgeMs >= (24 * 60 * 60 * 1000)) {
+        const progressWindow = await pool.query(
+            `SELECT latitude, longitude, recorded_at
+             FROM gps_logs
+             WHERE trip_id = $1
+               AND recorded_at >= NOW() - INTERVAL '24 hours'
+             ORDER BY recorded_at ASC`,
+            [trip.trip_id]
+        );
+
+        const path = progressWindow.rows.map((row) => ({
+            latitude: Number(row.latitude),
+            longitude: Number(row.longitude)
+        }));
+
+        let noProgress24h = false;
+        let progressKm24h = 0;
+
+        if (path.length < 2) {
+            noProgress24h = true;
+        } else {
+            progressKm24h = sumDistance(path);
+            noProgress24h = progressKm24h < 0.5;
+        }
+
+        if (noProgress24h) {
             const alert = await createAlertIfNotRecent({
                 truck_id: trip.truck_id,
                 trip_id: trip.trip_id,
-                alert_type: 'route_deviation',
-                description: `Truck deviated ${deviationKm.toFixed(2)} km from recommended route`
+                alert_type: 'no_progress_24h',
+                description: progressKm24h > 0
+                    ? `No meaningful progress in last 24 hours (${progressKm24h.toFixed(2)} km)`
+                    : 'No trip progress recorded in last 24 hours',
+                withinMinutes: 1440
             });
             if (alert) {
                 created.push(alert);
             }
-        }
-    }
-
-    const logsResult = await pool.query(
-        `SELECT latitude, longitude, COALESCE(speed_kmph, 0) AS speed, recorded_at
-         FROM gps_logs
-         WHERE trip_id = $1
-         ORDER BY recorded_at ASC`,
-        [trip.trip_id]
-    );
-
-    const logs = logsResult.rows.map((row) => ({
-        latitude: Number(row.latitude),
-        longitude: Number(row.longitude),
-        speed: Number(row.speed),
-        recorded_at: row.recorded_at
-    }));
-
-    const logDistance = sumDistance(logs);
-    const trackedDistance = Number(trip.gps_distance_km || 0);
-    const routeDistance = route.length > 1 ? sumDistance(route) : 0;
-    const totalDistance = Math.max(routeDistance, Number(trip.distance_km || 0), trackedDistance, logDistance);
-
-    if (totalDistance > 0) {
-        try {
-            const travelledDistance = Math.max(logDistance, trackedDistance);
-            const distanceRemaining = Math.max(totalDistance - travelledDistance, 0);
-
-            const speedSamples = logs.map((item) => item.speed).filter((speed) => speed > 0);
-            const historicalAvgSpeed = speedSamples.length
-                ? speedSamples.reduce((sum, speed) => sum + speed, 0) / speedSamples.length
-                : 45;
-
-            const etaResponse = await axios.post(`${ML_SERVICE_URL}/predict/eta`, {
-                distance_remaining: Number(distanceRemaining.toFixed(3)),
-                current_speed: Number(currentSpeed.toFixed(2)),
-                historical_avg_speed: Number(historicalAvgSpeed.toFixed(2)),
-                trip_distance: Number(totalDistance.toFixed(3)),
-                road_type: 'highway'
-            }, { timeout: 12000 });
-
-            const predictedEta = Number(etaResponse.data?.eta_minutes || 0);
-            const plannedArrival = trip.planned_arrival_time || new Date(Date.now() + (120 * 60 * 1000)).toISOString();
-            const trafficLevel = currentSpeed <= 25 ? 0.9 : currentSpeed <= 45 ? 0.6 : 0.35;
-
-            const delayResponse = await axios.post(`${ML_SERVICE_URL}/predict/delay`, {
-                planned_arrival_time: plannedArrival,
-                predicted_eta: predictedEta,
-                trip_distance: Number(totalDistance.toFixed(3)),
-                traffic_level: trafficLevel
-            }, { timeout: 12000 });
-
-            const risk = Number(delayResponse.data?.delay_risk_percentage || 0);
-            if (risk >= 60) {
-                const alert = await createAlertIfNotRecent({
-                    truck_id: trip.truck_id,
-                    trip_id: trip.trip_id,
-                    alert_type: 'delay_risk',
-                    description: `Delay risk ${risk.toFixed(1)}% (ETA ${predictedEta.toFixed(1)} min)`
-                });
-                if (alert) {
-                    created.push(alert);
-                }
-            }
-        } catch (error) {
-            console.warn(`Delay risk prediction skipped for trip ${trip.trip_id}: ${error.message}`);
         }
     }
 
@@ -290,13 +197,9 @@ async function evaluateTrip(trip) {
 
 async function evaluateAlerts() {
     const runningTrips = await pool.query(
-        `SELECT t.trip_id, t.truck_id,
-                COALESCE(t.distance_km, 0) AS distance_km,
-                COALESCE(t.gps_distance_km, 0) AS gps_distance_km,
-                COALESCE(tr.route_polyline, t.route_polyline) AS route_polyline,
-                t.planned_arrival_time
+    `SELECT t.trip_id, t.truck_id,
+        COALESCE(t.start_time, t.created_at) AS started_at
          FROM trips t
-         LEFT JOIN trip_routes tr ON tr.trip_id = t.trip_id
          WHERE LOWER(t.status) IN ('running', 'in_progress')`
     );
 
@@ -324,11 +227,25 @@ app.get('/health', async (req, res) => {
 
 app.get('/alerts', async (req, res) => {
     const { limit = 100 } = req.query;
+    const includeAll = String(req.query.include_all || '').toLowerCase() === 'true';
 
     try {
+        if (includeAll) {
+            const result = await pool.query(
+                `SELECT * FROM alerts ORDER BY created_at DESC LIMIT $1`,
+                [Number(limit)]
+            );
+
+            return res.json({ success: true, count: result.rows.length, data: result.rows });
+        }
+
         const result = await pool.query(
-            `SELECT * FROM alerts ORDER BY created_at DESC LIMIT $1`,
-            [Number(limit)]
+            `SELECT *
+             FROM alerts
+             WHERE alert_type = ANY($1::text[])
+             ORDER BY created_at DESC
+             LIMIT $2`,
+            [OPERATIONAL_ALERT_TYPES, Number(limit)]
         );
 
         return res.json({ success: true, count: result.rows.length, data: result.rows });

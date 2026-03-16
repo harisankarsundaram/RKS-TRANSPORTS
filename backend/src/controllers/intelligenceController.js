@@ -18,41 +18,6 @@ function distanceKm(start, end) {
     return 6371 * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 }
 
-function parsePolyline(rawPolyline) {
-    if (!rawPolyline) {
-        return [];
-    }
-
-    try {
-        const parsed = JSON.parse(rawPolyline);
-        if (!Array.isArray(parsed)) {
-            return [];
-        }
-
-        return parsed
-            .map((point) => {
-                if (Array.isArray(point) && point.length >= 2) {
-                    return {
-                        longitude: Number(point[0]),
-                        latitude: Number(point[1])
-                    };
-                }
-
-                if (point && point.longitude !== undefined && point.latitude !== undefined) {
-                    return {
-                        longitude: Number(point.longitude),
-                        latitude: Number(point.latitude)
-                    };
-                }
-
-                return null;
-            })
-            .filter((point) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude));
-    } catch {
-        return [];
-    }
-}
-
 function sumDistance(points) {
     if (!Array.isArray(points) || points.length < 2) {
         return 0;
@@ -63,22 +28,6 @@ function sumDistance(points) {
         total += distanceKm(points[index - 1], points[index]);
     }
     return total;
-}
-
-function minDistanceToRoute(point, route) {
-    if (!Array.isArray(route) || route.length === 0) {
-        return 0;
-    }
-
-    let best = Number.POSITIVE_INFINITY;
-    for (const routePoint of route) {
-        const candidate = distanceKm(point, routePoint);
-        if (candidate < best) {
-            best = candidate;
-        }
-    }
-
-    return Number.isFinite(best) ? best : 0;
 }
 
 async function createAlertIfNotRecent({ truckId, tripId, alertType, description, withinMinutes = 180 }) {
@@ -122,16 +71,6 @@ async function getTripLogs(tripId) {
         speed: Number(row.speed || 0),
         recorded_at: row.recorded_at
     }));
-}
-
-function estimateDelayRiskPercentage({ etaMinutes, progressPercent }) {
-    if (!Number.isFinite(etaMinutes) || etaMinutes <= 0) {
-        return 0;
-    }
-
-    const normalizedEta = Math.min(etaMinutes / 360, 1);
-    const progressPenalty = Math.max(0, 1 - (Math.max(0, Math.min(progressPercent, 100)) / 100));
-    return Number(((normalizedEta * 70) + (progressPenalty * 30)).toFixed(2));
 }
 
 const MODEL_CATALOG = [
@@ -374,12 +313,28 @@ const IntelligenceController = {
     async listAlerts(req, res, next) {
         try {
             const limit = Math.max(1, Math.min(Number(req.query.limit) || 100, 300));
+            const includeAll = String(req.query.include_all || '').toLowerCase() === 'true';
+
+            if (includeAll) {
+                const result = await pool.query(
+                    `SELECT *
+                     FROM alerts
+                     ORDER BY created_at DESC
+                     LIMIT $1`,
+                    [limit]
+                );
+
+                return res.json({ success: true, count: result.rows.length, data: result.rows });
+            }
+
+            const allowedTypes = ['overspeed', 'idle_vehicle', 'no_progress_24h'];
             const result = await pool.query(
                 `SELECT *
                  FROM alerts
+                 WHERE alert_type = ANY($1::text[])
                  ORDER BY created_at DESC
-                 LIMIT $1`,
-                [limit]
+                 LIMIT $2`,
+                [allowedTypes, limit]
             );
 
             return res.json({ success: true, count: result.rows.length, data: result.rows });
@@ -394,12 +349,8 @@ const IntelligenceController = {
                 `SELECT
                     t.trip_id,
                     t.truck_id,
-                    t.distance_km,
-                    COALESCE(t.gps_distance_km, 0) AS gps_distance_km,
-                    COALESCE(tr.route_polyline, t.route_polyline) AS route_polyline,
-                    t.planned_arrival_time
+                    COALESCE(t.start_time, t.created_at) AS started_at
                  FROM trips t
-                 LEFT JOIN trip_routes tr ON tr.trip_id = t.trip_id
                  WHERE LOWER(t.status) IN ('running', 'in_progress')`
             );
 
@@ -412,27 +363,6 @@ const IntelligenceController = {
                 }
 
                 const latest = logs[logs.length - 1];
-                const route = parsePolyline(trip.route_polyline);
-                const routeDistance = route.length > 1
-                    ? sumDistance(route)
-                    : Number(trip.distance_km || 0);
-                const logDistance = sumDistance(logs);
-                const trackedDistance = Number(trip.gps_distance_km || 0);
-                const travelledDistance = Math.max(logDistance, trackedDistance);
-                const distanceRemaining = Math.max(routeDistance - travelledDistance, 0);
-
-                const speedSamples = logs.slice(-12).map((row) => row.speed).filter((speed) => speed > 0);
-                const avgSpeed = speedSamples.length > 0
-                    ? speedSamples.reduce((sum, speed) => sum + speed, 0) / speedSamples.length
-                    : Math.max(Number(latest.speed || 0), 35);
-
-                const effectiveSpeed = Math.max(avgSpeed, 25);
-                const etaMinutes = distanceRemaining > 0
-                    ? (distanceRemaining / effectiveSpeed) * 60
-                    : 0;
-                const progressPercent = routeDistance > 0
-                    ? Math.min(100, (travelledDistance / routeDistance) * 100)
-                    : 0;
 
                 if (Number(latest.speed || 0) > 80) {
                     const alert = await createAlertIfNotRecent({
@@ -470,44 +400,38 @@ const IntelligenceController = {
                     }
                 }
 
-                if (route.length > 0) {
-                    const deviation = minDistanceToRoute(
-                        {
-                            latitude: latest.latitude,
-                            longitude: latest.longitude
-                        },
-                        route
-                    );
+                const startedAtMs = trip.started_at ? new Date(trip.started_at).getTime() : NaN;
+                const tripAgeMs = Number.isFinite(startedAtMs) ? (Date.now() - startedAtMs) : (24 * 60 * 60 * 1000);
 
-                    if (deviation > 1.5) {
+                if (tripAgeMs >= (24 * 60 * 60 * 1000)) {
+                    const last24hLogs = logs.filter((row) => {
+                        const ageMs = Date.now() - new Date(row.recorded_at).getTime();
+                        return ageMs <= (24 * 60 * 60 * 1000);
+                    });
+
+                    let noProgress24h = false;
+                    let progressKm24h = 0;
+
+                    if (last24hLogs.length < 2) {
+                        noProgress24h = true;
+                    } else {
+                        progressKm24h = sumDistance(last24hLogs);
+                        noProgress24h = progressKm24h < 0.5;
+                    }
+
+                    if (noProgress24h) {
                         const alert = await createAlertIfNotRecent({
                             truckId: trip.truck_id,
                             tripId: trip.trip_id,
-                            alertType: 'route_deviation',
-                            description: `Truck deviated ${deviation.toFixed(2)} km from planned route`,
-                            withinMinutes: 90
+                            alertType: 'no_progress_24h',
+                            description: progressKm24h > 0
+                                ? `No meaningful progress in last 24 hours (${progressKm24h.toFixed(2)} km)`
+                                : 'No trip progress recorded in last 24 hours',
+                            withinMinutes: 1440
                         });
                         if (alert) {
                             createdAlerts.push(alert);
                         }
-                    }
-                }
-
-                const delayRisk = estimateDelayRiskPercentage({
-                    etaMinutes,
-                    progressPercent
-                });
-
-                if (delayRisk >= 60) {
-                    const alert = await createAlertIfNotRecent({
-                        truckId: trip.truck_id,
-                        tripId: trip.trip_id,
-                        alertType: 'delay_risk',
-                        description: `Delay risk ${delayRisk.toFixed(1)}% (ETA ${etaMinutes.toFixed(1)} min)`,
-                        withinMinutes: 60
-                    });
-                    if (alert) {
-                        createdAlerts.push(alert);
                     }
                 }
             }

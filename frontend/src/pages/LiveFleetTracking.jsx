@@ -82,30 +82,14 @@ function routePointsForMap(route) {
     });
 }
 
-function getRiskTier(delayRiskPercentage) {
-    const value = Number(delayRiskPercentage || 0);
+function getMarkerTier(speedValue) {
+    const speed = Number(speedValue || 0);
 
-    if (value >= 60) {
+    if (speed > 80) {
         return 'high';
     }
 
-    if (value >= 35) {
-        return 'medium';
-    }
-
     return 'low';
-}
-
-function getRiskColor(riskTier) {
-    if (riskTier === 'high') {
-        return '#dc2626';
-    }
-
-    if (riskTier === 'medium') {
-        return '#f59e0b';
-    }
-
-    return '#0ea5e9';
 }
 
 function getSourceTone(source) {
@@ -172,7 +156,6 @@ function buildClusterPopupMarkup(vehicle, trip) {
             <div>Trip: ${escapeHtml(vehicle.trip_id || 'N/A')}</div>
             <div>Speed: ${roundTo(vehicle.speed, 1)} km/h</div>
             <div>ETA: ${escapeHtml(formatEtaMinutes(Number(trip?.eta_minutes)))}</div>
-            <div>Delay Risk: ${roundTo(trip?.delay_risk_percentage, 1)}%</div>
         </div>
     `;
 }
@@ -266,10 +249,10 @@ function VehicleClusterLayer({ liveVehicles, tripLookup, onFocusTruck }) {
             const trip = vehicle.trip_id !== undefined && vehicle.trip_id !== null
                 ? tripLookup.get(String(vehicle.trip_id))
                 : null;
-            const riskTier = getRiskTier(trip?.delay_risk_percentage);
+            const markerTier = getMarkerTier(vehicle.speed);
 
             const marker = L.marker(markerPoint, {
-                icon: createTruckMarkerIcon(riskTier, Number(vehicle.heading ?? vehicle.bearing ?? 0))
+                icon: createTruckMarkerIcon(markerTier, Number(vehicle.heading ?? vehicle.bearing ?? 0))
             });
 
             const label = vehicle.truck_number || `Truck ${vehicle.truck_id}`;
@@ -365,13 +348,10 @@ function LiveFleetTracking() {
             .map((trip) => Number(trip.eta_minutes || 0))
             .filter((value) => Number.isFinite(value) && value > 0);
 
-        const highDelay = tripInsights.filter((trip) => Number(trip.delay_risk_percentage || 0) >= 60).length;
-
         return {
             runningTrips: Math.max(tripInsights.length, liveVehicles.length),
             avgProgress: roundTo(average(progressValues), 1),
             avgEta: etaValues.length ? roundTo(average(etaValues), 1) : null,
-            highDelayWarnings: highDelay,
             reportingTrucks: liveVehicles.length
         };
     }, [tripInsights, liveVehicles]);
@@ -425,11 +405,6 @@ function LiveFleetTracking() {
                     type: 'error',
                     text: 'No active vehicle feed detected yet. Simulation bootstrap has been triggered; refresh in a few seconds.'
                 });
-            } else if (source === 'backend-mock') {
-                setMessage({
-                    type: 'success',
-                    text: 'Live tracking is running from backend mock GPS fallback while microservices are unavailable.'
-                });
             } else {
                 setMessage({ type: '', text: '' });
             }
@@ -480,8 +455,6 @@ function LiveFleetTracking() {
                             return null;
                         }
 
-                        const riskTier = getRiskTier(trip.delay_risk_percentage);
-
                         return [
                             <Polyline
                                 key={`route-base-${trip.trip_id}`}
@@ -498,7 +471,7 @@ function LiveFleetTracking() {
                                 key={`route-${trip.trip_id}`}
                                 positions={routePoints}
                                 pathOptions={{
-                                    color: getRiskColor(riskTier),
+                                    color: '#0ea5e9',
                                     weight: 4,
                                     opacity: 0.9,
                                     lineCap: 'round',
@@ -525,12 +498,12 @@ function LiveFleetTracking() {
                             const trip = vehicle.trip_id !== undefined && vehicle.trip_id !== null
                                 ? tripLookup.get(String(vehicle.trip_id))
                                 : null;
-                            const riskTier = getRiskTier(trip?.delay_risk_percentage);
+                            const markerTier = getMarkerTier(vehicle.speed);
 
                             return (
                                 <Marker
                                     key={`${vehicle.truck_id}-${vehicle.trip_id || 'idle'}`}
-                                    icon={createTruckMarkerIcon(riskTier, Number(vehicle.heading ?? vehicle.bearing ?? 0))}
+                                    icon={createTruckMarkerIcon(markerTier, Number(vehicle.heading ?? vehicle.bearing ?? 0))}
                                     position={markerPoint}
                                     eventHandlers={{
                                         click: () => openDrawerAndFocusTruck(vehicle.truck_id)
@@ -550,7 +523,6 @@ function LiveFleetTracking() {
                                             <div>Trip: {vehicle.trip_id || 'N/A'}</div>
                                             <div>Speed: {roundTo(vehicle.speed, 1)} km/h</div>
                                             <div>ETA: {formatEtaMinutes(Number(trip?.eta_minutes))}</div>
-                                            <div>Delay Risk: {roundTo(trip?.delay_risk_percentage, 1)}%</div>
                                         </div>
                                     </Popup>
                                 </Marker>
@@ -610,16 +582,13 @@ function LiveFleetTracking() {
             <section className="tracking-legend">
                 <h3>Annotation Legend</h3>
                 <div className="tracking-legend-row">
-                    <span className="tracking-dot low" /> Low risk route
-                </div>
-                <div className="tracking-legend-row">
-                    <span className="tracking-dot medium" /> Medium risk route
-                </div>
-                <div className="tracking-legend-row">
-                    <span className="tracking-dot high" /> High risk route
+                    <span className="tracking-dot low" /> Trip history route
                 </div>
                 <div className="tracking-legend-row">
                     <span className="tracking-dot truck" /> Truck marker with heading arrow
+                </div>
+                <div className="tracking-legend-row">
+                    <span className="tracking-dot high" /> Overspeed marker (speed above 80 km/h)
                 </div>
                 {clusteringEnabled && (
                     <div className="tracking-legend-row">
@@ -667,10 +636,6 @@ function LiveFleetTracking() {
                             <strong>{overallKpis.avgEta ? formatEtaMinutes(overallKpis.avgEta) : 'N/A'}</strong>
                         </article>
                         <article className="tracking-kpi-card">
-                            <span>Delay Warnings</span>
-                            <strong>{overallKpis.highDelayWarnings}</strong>
-                        </article>
-                        <article className="tracking-kpi-card">
                             <span>Trucks Reporting</span>
                             <strong>{overallKpis.reportingTrucks}</strong>
                         </article>
@@ -699,15 +664,11 @@ function LiveFleetTracking() {
                                 {tripInsights.map((trip) => {
                                     const mappedTruck = trucksByTrip.get(String(trip.trip_id));
                                     const isFocused = mappedTruck && String(mappedTruck.truck_id) === String(focusedTruckId);
-                                    const riskTier = getRiskTier(trip.delay_risk_percentage);
 
                                     return (
                                         <li key={trip.trip_id} className={`tracking-trip-item ${isFocused ? 'active' : ''}`}>
                                             <div className="tracking-trip-top">
                                                 <strong>Trip #{trip.trip_id}</strong>
-                                                <span className={`tracking-risk-chip ${riskTier}`}>
-                                                    {roundTo(trip.delay_risk_percentage, 1)}%
-                                                </span>
                                             </div>
 
                                             <p>{trip.source} to {trip.destination}</p>
