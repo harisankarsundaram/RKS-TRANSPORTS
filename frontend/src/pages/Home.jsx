@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom'
 import Button from '../components/ui/Button'
-import Card, { CardBody, CardFooter, CardHeader } from '../components/ui/Card'
 import CountUp from '../components/ui/CountUp'
 import ScrollReveal from '../components/ui/ScrollReveal'
 import './Home.css'
@@ -11,103 +10,144 @@ const ADDRESS = {
   line2: 'Sankari, Salem - 637301',
 }
 
+const TRUST_METRICS = [
+  { end: 1200, suffix: '+', label: 'Completed Deliveries' },
+  { end: 60, suffix: '+', label: 'Fleet Strength' },
+  { end: 24, suffix: '/7', label: 'Customer Support' },
+]
+
+const PORTAL_LINKS = [
+  {
+    audience: 'For Customers',
+    title: 'Booking Portal',
+    description: 'Create and monitor transport requests with clear trip and delivery visibility.',
+    href: '/bookings',
+    linkLabel: 'Create booking',
+  },
+  {
+    audience: 'For Drivers',
+    title: 'Driver Access',
+    description: 'Open your assigned trip flow, notifications, and status updates in one place.',
+    href: '/owner',
+    linkLabel: 'Driver login',
+  },
+  {
+    audience: 'For Business Team',
+    title: 'Operations Dashboard',
+    description: 'Access planning and operational controls for dispatch and daily movement.',
+    href: '/dashboard',
+    linkLabel: 'Open dashboard',
+  },
+]
+
+const JOURNEY_STEPS = [
+  'Raise a booking request with pickup and drop details.',
+  'Get confirmation and follow your shipment with live status.',
+  'Receive delivery closure updates with transparent communication.',
+]
+
 function Home() {
   return (
     <div className="home-container">
-      {/* Hero Section with Stats */}
-      <section className="hero-section">
-        <ScrollReveal animation="fade-in">
-          <div className="container hero-content">
-            <h1 className="hero-title">
-              <span className="hero-highlight">RKS Transports Reliable & Punctual</span>
-            </h1>
-            <p className="hero-tagline">
-              Connect your fleet and streamline operations with RKS Transports.
-              The all-in-one platform for modern logistics.
-            </p>
-            <div className="hero-actions">
-              <Button to="/dashboard" size="lg" variant="primary">
-                Go to Dashboard
-              </Button>
-              <Button to="/contact" size="lg" variant="outline">
-                Contact Us
-              </Button>
-            </div>
-          </div>
-
-          <div className="container stats-container">
-            <div className="stats-grid">
-              <div className="stat-item">
-                <span className="stat-number">
-                  <CountUp end={60} suffix="+" />
-                </span>
-                <span className="stat-label">Active Vehicles</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-number">
-                  <CountUp end={40} suffix="+" />
-                </span>
-                <span className="stat-label">Active Drivers</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-number">24/7</span>
-                <span className="stat-label">Support Available</span>
+      <section className="home-hero">
+        <div className="container hero-center">
+          <ScrollReveal animation="fade-in">
+            <div className="hero-only-content">
+              <h1 className="hero-title hero-title-only">RKS TRANSPORTS</h1>
+              <div className="hero-actions hero-actions-centered">
+                <Button to="/bookings" size="lg" variant="primary">
+                  Book Transport
+                </Button>
+                <Button to="/owner" size="lg" variant="outline">
+                  Driver Login
+                </Button>
               </div>
             </div>
-          </div>
-        </ScrollReveal>
+          </ScrollReveal>
+        </div>
       </section>
-      {/* add here */}
 
+      <section className="metrics-strip" aria-label="Key business metrics">
+        <div className="container metrics-grid">
+          {TRUST_METRICS.map((metric) => (
+            <article key={metric.label} className="metric-item">
+              <p className="metric-value">
+                <CountUp end={metric.end} suffix={metric.suffix} />
+              </p>
+              <p className="metric-label">{metric.label}</p>
+            </article>
+          ))}
+        </div>
+      </section>
 
-      {/* About / Info Section */}
-      <section className="info-section" id="about">
+      <section className="portal-section" id="about">
         <ScrollReveal animation="fade-up">
-          <div className="container info-grid">
-            <div className="info-content">
-              <h2 className="section-title">About RKS Transports</h2>
+          <div className="container portal-grid">
+            <div className="portal-copy">
+              <p className="section-kicker">Portal Access</p>
+              <h2>One RKS TRANSPORTS platform with role-specific entry points</h2>
               <p>
-                RKS Transports is a leading provider of transport and logistics services.
-                We operate a robust fleet of trucks delivering goods safely and efficiently
-                across the region.
+                Customers, drivers, and operations staff can access their flow without confusion.
               </p>
-              <p>
-                This digital platform serves as our internal command center, allowing our
-                owners and drivers to coordinate seamlessly for superior service delivery.
-              </p>
-              <Button to="/about" variant="ghost" className="info-link">
-                More about our services &rarr;
-              </Button>
+
+              <ul className="journey-list">
+                {JOURNEY_STEPS.map((step) => (
+                  <li key={step}>
+                    <span className="journey-dot" aria-hidden="true" />
+                    <span>{step}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
-            <div className="info-notice">
-              <h2 className="section-title">Operational Portal</h2>
-              <p>
-                This system is exclusively for the management of RKS Transports assets and personnel.
-                Unauthorized access is prohibited. Drivers and Admin staff please log in to continue.
-              </p>
+
+            <div className="portal-links">
+              {PORTAL_LINKS.map((portal) => (
+                <article key={portal.title} className="portal-link-row">
+                  <div>
+                    <p className="portal-audience">{portal.audience}</p>
+                    <h3>{portal.title}</h3>
+                    <p>{portal.description}</p>
+                  </div>
+
+                  <Link to={portal.href} className="portal-link-cta">
+                    {portal.linkLabel}
+                  </Link>
+                </article>
+              ))}
             </div>
           </div>
         </ScrollReveal>
       </section>
 
-      {/* Location / Map Section */}
-      <section className="location-section container">
+      <section className="location-section">
         <ScrollReveal animation="fade-up">
-          <div className="location-grid">
+          <div className="container location-grid">
             <div className="address-block">
-              <h2 className="section-title">Visit Us</h2>
+              <p className="section-kicker">Visit Headquarters</p>
+              <h2>Visit RKS TRANSPORTS, Sankari</h2>
               <address>
                 <strong>{ADDRESS.name}</strong><br />
                 <span className="address-detail">{ADDRESS.line1}</span><br />
                 <span className="address-detail">{ADDRESS.line2}</span>
               </address>
+
+              <div className="address-points">
+                <div className="address-point">
+                  <span>Office Hours</span>
+                  <strong>Mon-Sat, 8:00 AM to 8:00 PM</strong>
+                </div>
+                <div className="address-point">
+                  <span>Operations Line</span>
+                  <strong>+91 98765 43210</strong>
+                </div>
+              </div>
+
               <Button
                 href="https://www.google.com/maps/search/Sankari+Salem+637301"
                 target="_blank"
                 rel="noopener noreferrer"
                 variant="outline"
                 size="sm"
-                className="mt-4"
               >
                 Open in Google Maps
               </Button>
@@ -124,6 +164,23 @@ function Home() {
             </div>
           </div>
         </ScrollReveal>
+      </section>
+
+      <section className="cta-section">
+        <div className="container cta-inner">
+          <h2>Ready to schedule your next shipment with RKS TRANSPORTS?</h2>
+          <p>
+            Connect with RKS TRANSPORTS for dependable freight movement and professional support.
+          </p>
+          <div className="cta-actions">
+            <Button to="/bookings" size="lg" variant="primary">
+              Start Booking
+            </Button>
+            <Button to="/contact" size="lg" variant="outline">
+              Contact Us
+            </Button>
+          </div>
+        </div>
       </section>
     </div>
   )

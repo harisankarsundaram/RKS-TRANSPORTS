@@ -849,6 +849,126 @@
   gap: 4px;
 }
 
+.resource-utilization-monthly {
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 0.7rem 0.75rem;
+  background: #FFFFFF;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.resource-utilization-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+
+.resource-utilization-head h4 {
+  margin: 0;
+  font-size: 0.86rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-main);
+}
+
+.resource-utilization-head span {
+  font-size: 0.73rem;
+  color: var(--text-muted);
+}
+
+.resource-utilization-legend {
+  display: flex;
+  gap: 0.8rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.resource-utilization-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.resource-utilization-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.resource-utilization-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 140px;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.resource-utilization-month {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.resource-utilization-bars {
+  display: grid;
+  gap: 0.28rem;
+}
+
+.resource-track {
+  height: 8px;
+  border-radius: 999px;
+  background: #EEF1F5;
+  overflow: hidden;
+}
+
+.resource-fill {
+  height: 100%;
+  display: block;
+  border-radius: inherit;
+  transition: width 0.45s ease;
+}
+
+.resource-fill.driver {
+  background: var(--viz-info);
+}
+
+.resource-fill.truck {
+  background: var(--viz-success);
+}
+
+.resource-utilization-values {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.resource-utilization-empty {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.resource-utilization-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  padding: 0.5rem 0.58rem;
+  background: #f9fbff;
+}
+
+.resource-utilization-summary strong {
+  color: var(--text-main);
+  font-size: 0.8rem;
+}
+
 .dot {
   width: 8px;
   height: 8px;
@@ -859,6 +979,8 @@
 .dot-assigned { background: var(--viz-info); }
 .dot-maintenance { background: var(--viz-warning); }
 .dot-available { background: var(--viz-success); }
+.dot-driver { background: var(--viz-info); }
+.dot-truck { background: var(--viz-success); }
 
 /* Trip Breakdown */
 .trip-breakdown-grid {
@@ -916,6 +1038,104 @@
 
 .trip-extra-stats > div:last-child {
   border-bottom: none;
+}
+
+.trip-health-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin: 0.05rem 0 0.85rem;
+}
+
+.trip-health-item {
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 0.6rem 0.62rem;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.trip-health-item span {
+  font-size: 0.69rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.trip-health-item strong {
+  font-size: 1.04rem;
+  color: var(--text-main);
+}
+
+.trip-momentum-block {
+  margin-top: 0.85rem;
+  border-top: 1px solid var(--border-light);
+  padding-top: 0.72rem;
+}
+
+.trip-momentum-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.65rem;
+  margin-bottom: 0.5rem;
+}
+
+.trip-momentum-head span {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+}
+
+.trip-momentum-head strong {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.trip-momentum-list {
+  display: grid;
+  gap: 0.48rem;
+}
+
+.trip-momentum-row {
+  display: grid;
+  grid-template-columns: 68px 1fr 150px;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.trip-momentum-month {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.trip-momentum-track {
+  height: 8px;
+  border-radius: 999px;
+  background: #edf2fa;
+  overflow: hidden;
+}
+
+.trip-momentum-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%);
+  transition: width 0.45s ease;
+}
+
+.trip-momentum-meta {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  font-size: 0.71rem;
+  color: var(--text-secondary);
+  font-weight: 700;
 }
 
 .extra-label {
@@ -2210,6 +2430,28 @@
 
   .fleet-management-counts {
     grid-template-columns: 1fr;
+  }
+
+  .resource-utilization-row {
+    grid-template-columns: 1fr;
+    gap: 0.3rem;
+  }
+
+  .resource-utilization-values {
+    justify-content: flex-start;
+  }
+
+  .trip-health-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .trip-momentum-row {
+    grid-template-columns: 1fr;
+    gap: 0.28rem;
+  }
+
+  .trip-momentum-meta {
+    justify-content: flex-start;
   }
 
   .revexp-alt-lane {

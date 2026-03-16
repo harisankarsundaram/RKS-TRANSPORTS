@@ -698,6 +698,61 @@ function AdminDashboard() {
         )
     );
 
+    const monthlyTruckUtilization = monthlyCombined
+        .slice(-6)
+        .map((month) => {
+            const completedTrips = Number(month.completed || 0);
+            const tripsPerTruck = fleetTrackedTotal > 0
+                ? roundTo(completedTrips / fleetTrackedTotal, 2)
+                : 0;
+
+            return {
+                month: month.month,
+                monthLabel: month.month_label,
+                completedTrips,
+                tripsPerTruck
+            };
+        });
+
+    const maxTruckUtilizationLoad = Math.max(
+        1,
+        ...monthlyTruckUtilization.map((month) => month.tripsPerTruck)
+    );
+
+    const avgTruckTripsPerMonth = monthlyTruckUtilization.length > 0
+        ? roundTo(average(monthlyTruckUtilization.map((month) => month.tripsPerTruck)), 2)
+        : 0;
+
+    const totalTripsCount = Number(tc.total || 0);
+    const completedTripsCount = Number(tc.completed || 0);
+    const runningTripsCount = Number(tc.running || 0);
+    const plannedTripsCount = Number(tc.planned || 0);
+    const cancelledTripsCount = Number(tc.cancelled || 0);
+
+    const tripCompletionRate = totalTripsCount > 0
+        ? roundTo((completedTripsCount / totalTripsCount) * 100, 1)
+        : 0;
+    const tripCancellationRate = totalTripsCount > 0
+        ? roundTo((cancelledTripsCount / totalTripsCount) * 100, 1)
+        : 0;
+    const activeTripShare = totalTripsCount > 0
+        ? roundTo(((runningTripsCount + plannedTripsCount) / totalTripsCount) * 100, 1)
+        : 0;
+    const avgRevenuePerTrip = totalTripsCount > 0
+        ? (Number(data?.total_revenue || 0) / totalTripsCount)
+        : 0;
+
+    const tripMomentum = monthlyCombined.slice(-4).map((month) => ({
+        month: month.month,
+        monthLabel: month.month_label,
+        completedTrips: Number(month.completed || 0),
+        revenuePerTrip: Number(month.completed || 0) > 0
+            ? roundTo(Number(month.revenue || 0) / Number(month.completed || 0), 0)
+            : 0
+    }));
+
+    const maxTripMomentum = Math.max(1, ...tripMomentum.map((month) => month.completedTrips));
+
     return (
         <>
             <header className="dashboard-header dashboard-header-premium">
@@ -942,9 +997,53 @@ function AdminDashboard() {
                                 <span><i className="dot dot-available" />Available {fleetAvailableCount}</span>
                             </div>
                         </div>
+
+                        <div className="resource-utilization-monthly">
+                            <div className="resource-utilization-head">
+                                <h4>Monthly Truck Utilization</h4>
+                                <span>Completed trips per truck</span>
+                            </div>
+
+                            {monthlyTruckUtilization.length > 0 ? (
+                                <>
+                                    <div className="resource-utilization-summary">
+                                        <span>Average last {monthlyTruckUtilization.length} months</span>
+                                        <strong>{avgTruckTripsPerMonth.toFixed(2)} trips / truck</strong>
+                                    </div>
+
+                                    <div className="resource-utilization-list">
+                                        {monthlyTruckUtilization.map((month) => {
+                                            const truckWidth = Math.max(
+                                                4,
+                                                Math.round((month.tripsPerTruck / maxTruckUtilizationLoad) * 100)
+                                            );
+
+                                            return (
+                                                <article key={month.month} className="resource-utilization-row">
+                                                    <span className="resource-utilization-month">{month.monthLabel}</span>
+
+                                                    <div className="resource-utilization-bars">
+                                                        <div className="resource-track" title={`Truck utilization ${month.tripsPerTruck.toFixed(2)} trips/truck`}>
+                                                            <span className="resource-fill truck" style={{ width: `${truckWidth}%` }} />
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="resource-utilization-values">
+                                                        <span>{month.completedTrips} trips</span>
+                                                        <span>{month.tripsPerTruck.toFixed(2)} /truck</span>
+                                                    </div>
+                                                </article>
+                                            );
+                                        })}
+                                    </div>
+                                </>
+                            ) : (
+                                <p className="resource-utilization-empty">No monthly trip data available for truck utilization yet.</p>
+                            )}
+                        </div>
                     </div>
                     <p className="fleet-status-concise-note">
-                        Truck and driver counts are synced from Lorry Management and Driver Management pages.
+                        Truck count is synced from Lorry Management. Utilization is derived from completed monthly trips.
                     </p>
                 </section>
 
@@ -952,26 +1051,76 @@ function AdminDashboard() {
                     <h3 className="analytics-card-title">Trip Overview</h3>
                     <div className="trip-breakdown-grid">
                         <div className="trip-breakdown-item">
-                            <span className="trip-breakdown-value">{loadingValue || tc.total}</span>
+                            <span className="trip-breakdown-value">{loadingValue || totalTripsCount}</span>
                             <span className="trip-breakdown-label">Total</span>
                         </div>
                         <div className="trip-breakdown-item">
-                            <span className="trip-breakdown-value tb-running">{loadingValue || tc.running}</span>
+                            <span className="trip-breakdown-value tb-completed">{loadingValue || completedTripsCount}</span>
+                            <span className="trip-breakdown-label">Completed</span>
+                        </div>
+                        <div className="trip-breakdown-item">
+                            <span className="trip-breakdown-value tb-running">{loadingValue || runningTripsCount}</span>
                             <span className="trip-breakdown-label">Running</span>
                         </div>
                         <div className="trip-breakdown-item">
-                            <span className="trip-breakdown-value tb-planned">{loadingValue || tc.planned}</span>
+                            <span className="trip-breakdown-value tb-planned">{loadingValue || plannedTripsCount}</span>
                             <span className="trip-breakdown-label">Planned</span>
                         </div>
                         <div className="trip-breakdown-item">
-                            <span className="trip-breakdown-value tb-cancelled">{loadingValue || tc.cancelled}</span>
+                            <span className="trip-breakdown-value tb-cancelled">{loadingValue || cancelledTripsCount}</span>
                             <span className="trip-breakdown-label">Cancelled</span>
                         </div>
                     </div>
+
+                    <div className="trip-health-grid">
+                        <article className="trip-health-item">
+                            <span>Completion Rate</span>
+                            <strong>{loadingValue || `${tripCompletionRate}%`}</strong>
+                        </article>
+                        <article className="trip-health-item">
+                            <span>Active Load Share</span>
+                            <strong>{loadingValue || `${activeTripShare}%`}</strong>
+                        </article>
+                        <article className="trip-health-item">
+                            <span>Cancellation Rate</span>
+                            <strong>{loadingValue || `${tripCancellationRate}%`}</strong>
+                        </article>
+                    </div>
+
                     <div className="trip-extra-stats">
                         <div><span className="extra-label">Total Distance</span><span className="extra-value">{loadingValue || `${formatNumber(data?.total_distance)} km`}</span></div>
                         <div><span className="extra-label">Avg Freight</span><span className="extra-value">{loadingValue || fmt(data?.avg_freight)}</span></div>
+                        <div><span className="extra-label">Avg Revenue / Trip</span><span className="extra-value">{loadingValue || fmt(avgRevenuePerTrip)}</span></div>
                         <div><span className="extra-label">Avg Dead Mileage</span><span className="extra-value">{loadingValue || `${Number(data?.average_dead_mileage_percent || 0).toFixed(1)}%`}</span></div>
+                    </div>
+
+                    <div className="trip-momentum-block">
+                        <div className="trip-momentum-head">
+                            <span>Monthly Trip Momentum</span>
+                            <strong>Last 4 months</strong>
+                        </div>
+
+                        {tripMomentum.length > 0 ? (
+                            <div className="trip-momentum-list">
+                                {tripMomentum.map((month) => (
+                                    <article key={month.month} className="trip-momentum-row">
+                                        <span className="trip-momentum-month">{month.monthLabel}</span>
+                                        <div className="trip-momentum-track">
+                                            <span
+                                                className="trip-momentum-fill"
+                                                style={{ width: `${Math.max(5, Math.round((month.completedTrips / maxTripMomentum) * 100))}%` }}
+                                            />
+                                        </div>
+                                        <div className="trip-momentum-meta">
+                                            <span>{month.completedTrips} trips</span>
+                                            <span>{fmt(month.revenuePerTrip)} / trip</span>
+                                        </div>
+                                    </article>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="analytics-empty">No monthly trip trend data yet.</p>
+                        )}
                     </div>
                 </section>
             </div>
