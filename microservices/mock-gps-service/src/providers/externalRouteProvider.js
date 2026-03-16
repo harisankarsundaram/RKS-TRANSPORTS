@@ -44,6 +44,25 @@ function normalizePoint(point) {
     };
 }
 
+function cacheTokenForPoint(point) {
+    const normalized = normalizePoint(point);
+    if (!normalized) {
+        return '';
+    }
+
+    return `${normalized.latitude.toFixed(4)},${normalized.longitude.toFixed(4)}`;
+}
+
+function buildRouteCacheKey({ source, destination, startHint, endHint }) {
+    const sourceKey = String(source || '').trim().toLowerCase();
+    const destinationKey = String(destination || '').trim().toLowerCase();
+
+    const startToken = cacheTokenForPoint(startHint);
+    const endToken = cacheTokenForPoint(endHint);
+
+    return `${sourceKey || startToken || 'unknown-start'}::${destinationKey || endToken || 'unknown-end'}::${startToken}::${endToken}`;
+}
+
 async function geocodeLocation(locationText) {
     const normalized = String(locationText || '').trim();
     if (!normalized) {
@@ -165,22 +184,43 @@ async function fetchOsrmRoute(start, end) {
     }
 }
 
-async function getExternalRoute({ source, destination, apiKey }) {
+async function getExternalRoute({ source, destination, apiKey, startHint = null, endHint = null }) {
     const sourceKey = String(source || '').trim();
     const destinationKey = String(destination || '').trim();
-    if (!sourceKey || !destinationKey) {
+
+    const normalizedStartHint = normalizePoint(startHint);
+    const normalizedEndHint = normalizePoint(endHint);
+
+    const hasTextPair = Boolean(sourceKey && destinationKey);
+    const hasCoordinatePair = Boolean(normalizedStartHint && normalizedEndHint);
+
+    if (!hasTextPair && !hasCoordinatePair) {
         return null;
     }
 
-    const routeCacheKey = `${sourceKey}::${destinationKey}`.toLowerCase();
+    const routeCacheKey = buildRouteCacheKey({
+        source: sourceKey,
+        destination: destinationKey,
+        startHint: normalizedStartHint,
+        endHint: normalizedEndHint
+    });
+
     if (routeCache.has(routeCacheKey)) {
         return routeCache.get(routeCacheKey);
     }
 
-    const [start, end] = await Promise.all([
-        geocodeLocation(sourceKey),
-        geocodeLocation(destinationKey)
-    ]);
+    let start = normalizedStartHint;
+    let end = normalizedEndHint;
+
+    if ((!start || !end) && hasTextPair) {
+        const geocoded = await Promise.all([
+            geocodeLocation(sourceKey),
+            geocodeLocation(destinationKey)
+        ]);
+
+        start = start || geocoded[0];
+        end = end || geocoded[1];
+    }
 
     if (!start || !end) {
         return null;
@@ -203,10 +243,16 @@ async function getExternalRoute({ source, destination, apiKey }) {
     }
 
     routeCache.set(routeCacheKey, normalizedRoute);
-    routeCache.set(
-        `${destinationKey}::${sourceKey}`.toLowerCase(),
-        [...normalizedRoute].reverse()
-    );
+
+    if (hasTextPair || hasCoordinatePair) {
+        const reverseKey = buildRouteCacheKey({
+            source: destinationKey,
+            destination: sourceKey,
+            startHint: end,
+            endHint: start
+        });
+        routeCache.set(reverseKey, [...normalizedRoute].reverse());
+    }
 
     return normalizedRoute;
 }

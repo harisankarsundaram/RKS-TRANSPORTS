@@ -18,6 +18,7 @@ import './LiveFleetTracking.css';
 const DEFAULT_CENTER = [13.0827, 80.2707];
 const REFRESH_INTERVAL_MS = 30000;
 const CLUSTER_MIN_VEHICLES = 14;
+const MAX_ROUTE_POINTS_FOR_MAP = 1600;
 
 function roundTo(value, digits = 1) {
     const parsed = Number(value);
@@ -56,7 +57,7 @@ function routePointsForMap(route) {
         return [];
     }
 
-    return route
+    const normalizedPoints = route
         .map((point) => {
             if (point?.latitude !== undefined && point?.longitude !== undefined) {
                 const lat = Number(point.latitude);
@@ -70,6 +71,15 @@ function routePointsForMap(route) {
             return null;
         })
         .filter(Boolean);
+
+    if (normalizedPoints.length <= MAX_ROUTE_POINTS_FOR_MAP) {
+        return normalizedPoints;
+    }
+
+    const stride = Math.ceil(normalizedPoints.length / MAX_ROUTE_POINTS_FOR_MAP);
+    return normalizedPoints.filter((_, index) => {
+        return index === 0 || index === normalizedPoints.length - 1 || index % stride === 0;
+    });
 }
 
 function getRiskTier(delayRiskPercentage) {
@@ -472,18 +482,30 @@ function LiveFleetTracking() {
 
                         const riskTier = getRiskTier(trip.delay_risk_percentage);
 
-                        return (
+                        return [
+                            <Polyline
+                                key={`route-base-${trip.trip_id}`}
+                                positions={routePoints}
+                                pathOptions={{
+                                    color: '#ffffff',
+                                    weight: 7,
+                                    opacity: 0.75,
+                                    lineCap: 'round',
+                                    lineJoin: 'round'
+                                }}
+                            />,
                             <Polyline
                                 key={`route-${trip.trip_id}`}
                                 positions={routePoints}
                                 pathOptions={{
                                     color: getRiskColor(riskTier),
                                     weight: 4,
-                                    opacity: 0.7,
-                                    dashArray: riskTier === 'high' ? '8 8' : null
+                                    opacity: 0.9,
+                                    lineCap: 'round',
+                                    lineJoin: 'round'
                                 }}
                             />
-                        );
+                        ];
                     })}
 
                     {clusteringEnabled ? (

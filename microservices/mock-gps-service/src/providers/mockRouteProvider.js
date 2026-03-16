@@ -114,6 +114,20 @@ function buildSyntheticRoute(source, destination, points = 8) {
     return route;
 }
 
+function buildCoordinateHints(source, destination, parsedRoute) {
+    if (Array.isArray(parsedRoute) && parsedRoute.length > 1) {
+        return {
+            startHint: parsedRoute[0],
+            endHint: parsedRoute[parsedRoute.length - 1]
+        };
+    }
+
+    return {
+        startHint: resolveCityCoordinate(source),
+        endHint: resolveCityCoordinate(destination)
+    };
+}
+
 async function resolveRoutePoints({ rawPolyline, source, destination, distanceHintKm = 0 }) {
     const parsed = parseRoutePolyline(rawPolyline);
     const providerMode = String(process.env.GPS_ROUTE_PROVIDER || 'auto').toLowerCase();
@@ -123,10 +137,13 @@ async function resolveRoutePoints({ rawPolyline, source, destination, distanceHi
         (providerMode === 'auto' && parsed.length < MIN_ROUTE_POINTS_FOR_DB_ONLY);
 
     if (shouldTryExternal) {
+        const { startHint, endHint } = buildCoordinateHints(source, destination, parsed);
         const externalRoute = await getExternalRoute({
             source,
             destination,
-            apiKey: process.env.OPENROUTESERVICE_API_KEY || process.env.REAL_GPS_API_KEY
+            apiKey: process.env.OPENROUTESERVICE_API_KEY || process.env.REAL_GPS_API_KEY,
+            startHint,
+            endHint
         });
         if (Array.isArray(externalRoute) && externalRoute.length > 1) {
             return { route: externalRoute, strategy: 'external' };
