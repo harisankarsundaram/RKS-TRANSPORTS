@@ -54,6 +54,19 @@ function normalizeRoute(route) {
         .filter((point) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude));
 }
 
+function normalizeGpsHistoryRoute(gpsLogs) {
+    if (!Array.isArray(gpsLogs)) {
+        return [];
+    }
+
+    return normalizeRoute(
+        gpsLogs.map((point) => ({
+            latitude: point?.latitude,
+            longitude: point?.longitude
+        }))
+    );
+}
+
 function estimateTrafficLevel(currentSpeed) {
     if (currentSpeed <= 20) {
         return 0.85;
@@ -164,6 +177,10 @@ async function getMlPrediction({ distanceRemaining, currentSpeed, historicalAvgS
 }
 
 function buildFallbackInsight(vehicle, trip = null) {
+    const preciseRoute = normalizeRoute(trip?.route);
+    const historyRoute = normalizeGpsHistoryRoute(trip?.gps_logs);
+    const routeForMap = preciseRoute.length > 1 ? preciseRoute : historyRoute;
+
     const totalDistanceKm = toNumber(
         trip?.total_route_distance_km,
         toNumber(trip?.trip_distance, toNumber(vehicle.trip_distance, 0))
@@ -201,7 +218,7 @@ function buildFallbackInsight(vehicle, trip = null) {
         progress_percent: Number(Math.max(0, Math.min(progressPercent, 100)).toFixed(2)),
         eta_minutes: Number(Math.max(0, etaMinutes).toFixed(2)),
         delay_risk_percentage: Number(Math.max(0, Math.min(delayRiskPercentage, 100)).toFixed(2)),
-        route: normalizeRoute(trip?.route)
+        route: routeForMap
     };
 }
 

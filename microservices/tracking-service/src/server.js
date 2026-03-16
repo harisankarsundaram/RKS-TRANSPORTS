@@ -10,9 +10,11 @@ const OPENROUTESERVICE_ENDPOINT = 'https://api.openrouteservice.org/v2/direction
 const OSRM_ENDPOINT = 'https://router.project-osrm.org/route/v1/driving';
 const REQUEST_TIMEOUT_MS = Number(process.env.TRACKING_ROUTE_TIMEOUT_MS || 12000);
 const MIN_ROUTE_POINTS_FOR_EXTERNAL = Number(process.env.TRACKING_ROUTE_MIN_POINTS || 24);
+const HISTORY_ROUTE_MAX_WAYPOINTS = Number(process.env.TRACKING_HISTORY_ROUTE_MAX_WAYPOINTS || 48);
 
 const geocodeCache = new Map();
 const externalRouteCache = new Map();
+const roadwayRouteCache = new Map();
 
 app.use(cors());
 app.use(express.json());
@@ -46,6 +48,11 @@ function sumSegmentDistance(points) {
     return sum;
 }
 
+function isActiveTripStatus(status) {
+    const normalized = String(status || '').toLowerCase();
+    return normalized === 'running' || normalized === 'in_progress';
+}
+
 function estimateDelayRiskPercentage(etaMinutes, progressPercent) {
     const safeEta = Math.max(0, Number(etaMinutes || 0));
     const safeProgress = Math.max(0, Math.min(100, Number(progressPercent || 0)));
@@ -74,6 +81,62 @@ function normalizePoint(point) {
     return {
         latitude: Number(latitude.toFixed(6)),
         longitude: Number(longitude.toFixed(6))
+    };
+}
+
+function buildHistoryRoute(logs) {
+    if (!Array.isArray(logs)) {
+        return [];
+    }
+
+    return logs
+        .map((point) => normalizePoint(point))
+        .filter((point) => point !== null);
+}
+
+function downsampleRoutePoints(points, maxPoints = HISTORY_ROUTE_MAX_WAYPOINTS) {
+    if (!Array.isArray(points) || points.length <= maxPoints) {
+        return Array.isArray(points) ? points : [];
+    }
+
+    const stride = Math.ceil(points.length / maxPoints);
+    return points.filter((_, index) => {
+        return index === 0 || index === points.length - 1 || index % stride === 0;
+    });
+}
+
+function buildRouteCacheToken(points) {
+    if (!Array.isArray(points) || points.length < 2) {
+        return '';
+    }
+
+    return points
+        .map((point) => `${Number(point.latitude).toFixed(4)},${Number(point.longitude).toFixed(4)}`)
+        .join('|');
+}
+
+function buildRouteDetails(route, summaryDistanceMeters, summaryDurationSeconds) {
+    if (!Array.isArray(route) || route.length < 2) {
+        return null;
+    }
+
+    const fallbackDistanceKm = sumSegmentDistance(route);
+    const normalizedSummaryDistanceKm = Number(summaryDistanceMeters) / 1000;
+    const normalizedDistanceKm = Number.isFinite(normalizedSummaryDistanceKm) && normalizedSummaryDistanceKm > 0
+        ? normalizedSummaryDistanceKm
+        : fallbackDistanceKm;
+
+    const normalizedSummaryDurationMinutes = Number(summaryDurationSeconds) / 60;
+    const normalizedDurationMinutes = Number.isFinite(normalizedSummaryDurationMinutes) && normalizedSummaryDurationMinutes >= 0
+        ? normalizedSummaryDurationMinutes
+        : null;
+
+    return {
+        route,
+        distanceKm: Number(normalizedDistanceKm.toFixed(3)),
+        durationMinutes: Number.isFinite(normalizedDurationMinutes)
+            ? Number(normalizedDurationMinutes.toFixed(2))
+            : null
     };
 }
 
@@ -163,28 +226,41 @@ function normalizeRouteCoordinates(coordinates) {
         .filter((point) => point !== null);
 }
 
-async function fetchOpenRouteServiceRoute(start, end) {
-    const apiKey = String(process.env.OPENROUTESERVICE_API_KEY || '').trim();
+async function fetchOpenRouteServiceDirections(points) {
+    const apiKey = String(process.env.OPENROUTESERVICE_API_KEY || process.env.REAL_GPS_API_KEY || '').trim();
     if (!apiKey) {
+        return null;
+    }
+
+    const normalizedPoints = downsampleRoutePoints(
+        (points || []).map((point) => normalizePoint(point)).filter((point) => point !== null),
+        HISTORY_ROUTE_MAX_WAYPOINTS
+    );
+
+    if (normalizedPoints.length < 2) {
         return null;
     }
 
     try {
         const query = new URLSearchParams({
             api_key: apiKey,
-            start: `${start.longitude},${start.latitude}`,
-            end: `${end.longitude},${end.latitude}`,
             geometry_format: 'geojson'
         });
 
         const payload = await fetchJsonWithTimeout(
             `${OPENROUTESERVICE_ENDPOINT}?${query.toString()}`,
             {
+                method: 'POST',
                 headers: {
                     Accept: 'application/json, application/geo+json',
                     'Content-Type': 'application/json; charset=utf-8',
                     'User-Agent': 'rks-tracking-service/1.0'
-                }
+                },
+                body: JSON.stringify({
+                    coordinates: normalizedPoints.map((point) => [point.longitude, point.latitude]),
+                    instructions: false,
+                    geometry_simplify: false
+                })
             }
         );
 
@@ -192,13 +268,24 @@ async function fetchOpenRouteServiceRoute(start, end) {
         const legacyCoordinates = payload?.routes?.[0]?.geometry?.coordinates;
         const coordinates = Array.isArray(geoJsonCoordinates) ? geoJsonCoordinates : legacyCoordinates;
         const route = normalizeRouteCoordinates(coordinates);
-        return route.length > 1 ? route : null;
+        const summary = payload?.features?.[0]?.properties?.summary || payload?.routes?.[0]?.summary;
+
+        return buildRouteDetails(route, summary?.distance, summary?.duration);
     } catch {
         return null;
     }
 }
 
-async function fetchOsrmRoute(start, end) {
+async function fetchOsrmDirections(points) {
+    const normalizedPoints = downsampleRoutePoints(
+        (points || []).map((point) => normalizePoint(point)).filter((point) => point !== null),
+        HISTORY_ROUTE_MAX_WAYPOINTS
+    );
+
+    if (normalizedPoints.length < 2) {
+        return null;
+    }
+
     try {
         const query = new URLSearchParams({
             alternatives: 'false',
@@ -207,8 +294,12 @@ async function fetchOsrmRoute(start, end) {
             steps: 'false'
         });
 
+        const coordinatesPath = normalizedPoints
+            .map((point) => `${point.longitude},${point.latitude}`)
+            .join(';');
+
         const payload = await fetchJsonWithTimeout(
-            `${OSRM_ENDPOINT}/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?${query.toString()}`,
+            `${OSRM_ENDPOINT}/${coordinatesPath}?${query.toString()}`,
             {
                 headers: {
                     'User-Agent': 'rks-tracking-service/1.0'
@@ -216,12 +307,56 @@ async function fetchOsrmRoute(start, end) {
             }
         );
 
-        const coordinates = payload?.routes?.[0]?.geometry?.coordinates;
-        const route = normalizeRouteCoordinates(coordinates);
-        return route.length > 1 ? route : null;
+        const route = normalizeRouteCoordinates(payload?.routes?.[0]?.geometry?.coordinates);
+        const summary = payload?.routes?.[0];
+
+        return buildRouteDetails(route, summary?.distance, summary?.duration);
     } catch {
         return null;
     }
+}
+
+async function fetchOpenRouteServiceRoute(start, end) {
+    const details = await fetchOpenRouteServiceDirections([start, end]);
+    return details?.route || null;
+}
+
+async function fetchOsrmRoute(start, end) {
+    const details = await fetchOsrmDirections([start, end]);
+    return details?.route || null;
+}
+
+async function fetchRoadwayRouteDetails(points) {
+    const normalizedPoints = downsampleRoutePoints(
+        (points || []).map((point) => normalizePoint(point)).filter((point) => point !== null),
+        HISTORY_ROUTE_MAX_WAYPOINTS
+    );
+
+    if (normalizedPoints.length < 2) {
+        return null;
+    }
+
+    const routeEngine = String(process.env.GPS_ROUTE_ENGINE || 'auto').toLowerCase();
+    const cacheKey = `${routeEngine}::${buildRouteCacheToken(normalizedPoints)}`;
+    if (roadwayRouteCache.has(cacheKey)) {
+        return roadwayRouteCache.get(cacheKey);
+    }
+
+    let details = null;
+
+    if (routeEngine === 'auto' || routeEngine === 'openrouteservice' || routeEngine === 'ors') {
+        details = await fetchOpenRouteServiceDirections(normalizedPoints);
+    }
+
+    if (!details && (routeEngine === 'auto' || routeEngine === 'osrm' || routeEngine === 'openrouteservice' || routeEngine === 'ors')) {
+        details = await fetchOsrmDirections(normalizedPoints);
+    }
+
+    if (details) {
+        roadwayRouteCache.set(cacheKey, details);
+    }
+
+    return details;
 }
 
 function buildExternalRouteCacheKey({ source, destination, startHint, endHint }) {
@@ -354,6 +489,54 @@ async function resolveTripRoute({ trip, logs }) {
         .filter((point) => point !== null);
 
     return logRoute.length > 1 ? logRoute : parsed;
+}
+
+async function resolveRoadSnappedHistory(logs) {
+    const historyRoute = buildHistoryRoute(logs);
+    if (historyRoute.length < 2) {
+        return {
+            route: historyRoute,
+            distanceKm: Number(sumSegmentDistance(historyRoute).toFixed(3)),
+            durationMinutes: null,
+            source: 'gps_history'
+        };
+    }
+
+    const details = await fetchRoadwayRouteDetails(historyRoute);
+    if (!details) {
+        return {
+            route: historyRoute,
+            distanceKm: Number(sumSegmentDistance(historyRoute).toFixed(3)),
+            durationMinutes: null,
+            source: 'gps_history'
+        };
+    }
+
+    return {
+        ...details,
+        source: 'road_snapped_history'
+    };
+}
+
+async function resolveRoadEtaMetrics({ currentPoint, destination }) {
+    const start = normalizePoint(currentPoint);
+    const end = await geocodeLocation(destination);
+
+    if (!start || !end) {
+        return null;
+    }
+
+    const details = await fetchRoadwayRouteDetails([start, end]);
+    if (!details) {
+        return null;
+    }
+
+    return {
+        distanceRemainingKm: Number(details.distanceKm),
+        etaMinutes: Number.isFinite(details.durationMinutes)
+            ? Number(details.durationMinutes)
+            : null
+    };
 }
 
 function normalizePolyline(rawPolyline) {
@@ -537,25 +720,48 @@ app.get('/tracking/trip/:tripId', async (req, res) => {
             timestamp: row.recorded_at
         }));
 
-        const routePolyline = await resolveTripRoute({ trip, logs });
-        const routeDistance = routePolyline.length > 1
-            ? sumSegmentDistance(routePolyline)
-            : Number(trip.route_distance || trip.distance_km || 0);
+        const isActiveTrip = isActiveTripStatus(trip.status);
+        const historyDetails = isActiveTrip ? await resolveRoadSnappedHistory(logs) : null;
+
+        const routePolyline = isActiveTrip
+            ? (historyDetails?.route || [])
+            : await resolveTripRoute({ trip, logs });
+
+        const routeDistance = isActiveTrip
+            ? Number(historyDetails?.distanceKm || 0)
+            : (routePolyline.length > 1
+                ? sumSegmentDistance(routePolyline)
+                : Number(trip.route_distance || trip.distance_km || 0));
 
         const distanceFromLogs = sumSegmentDistance(logs);
         const trackedDistance = Number(trip.gps_distance_km || 0);
         const travelledDistance = Math.max(distanceFromLogs, trackedDistance);
-        const progress = routeDistance > 0
-            ? Math.min(1, travelledDistance / routeDistance)
+        const latestPoint = logs.length > 0 ? logs[logs.length - 1] : null;
+        const latestSpeed = latestPoint ? Number(latestPoint.speed || 0) : 0;
+
+        const roadEtaMetrics = isActiveTrip && latestPoint
+            ? await resolveRoadEtaMetrics({
+                currentPoint: latestPoint,
+                destination: trip.destination
+            })
+            : null;
+
+        const distanceRemainingFromRoad = Number(roadEtaMetrics?.distanceRemainingKm);
+        const distanceRemaining = Number.isFinite(distanceRemainingFromRoad)
+            ? Math.max(distanceRemainingFromRoad, 0)
+            : Math.max(routeDistance - travelledDistance, 0);
+
+        const totalDistance = Math.max(travelledDistance + distanceRemaining, routeDistance, travelledDistance);
+        const progress = totalDistance > 0
+            ? Math.min(1, travelledDistance / totalDistance)
             : 0;
 
-        const latestSpeed = logs.length > 0
-            ? Number(logs[logs.length - 1].speed || 0)
-            : 0;
-        const distanceRemaining = Math.max(routeDistance - travelledDistance, 0);
-        const etaMinutes = distanceRemaining > 0
-            ? Number(((distanceRemaining / Math.max(latestSpeed, 25)) * 60).toFixed(2))
-            : 0;
+        const etaFromRoad = Number(roadEtaMetrics?.etaMinutes);
+        const etaMinutes = Number.isFinite(etaFromRoad)
+            ? Number(etaFromRoad.toFixed(2))
+            : (distanceRemaining > 0
+                ? Number(((distanceRemaining / Math.max(latestSpeed, 25)) * 60).toFixed(2))
+                : 0);
         const progressPercent = Number((progress * 100).toFixed(2));
         const delayRisk = estimateDelayRiskPercentage(etaMinutes, progressPercent);
 
@@ -570,11 +776,13 @@ app.get('/tracking/trip/:tripId', async (req, res) => {
                 route: routePolyline,
                 gps_logs: logs,
                 distance_travelled_km: Number(travelledDistance.toFixed(3)),
-                total_route_distance_km: Number(routeDistance.toFixed(3)),
+                total_route_distance_km: Number(totalDistance.toFixed(3)),
                 progress: Number(progress.toFixed(4)),
                 progress_percent: progressPercent,
                 eta_minutes: etaMinutes,
-                delay_risk_percentage: delayRisk
+                delay_risk_percentage: delayRisk,
+                route_source: isActiveTrip ? (historyDetails?.source || 'gps_history') : 'planned_route',
+                eta_source: Number.isFinite(etaFromRoad) ? 'roadway' : 'heuristic'
             }
         });
     } catch (error) {
