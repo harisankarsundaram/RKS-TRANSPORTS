@@ -80,7 +80,7 @@ app.get('/analytics/fuel/anomalies', async (req, res) => {
 
     try {
         const params = [];
-        const where = [];
+        const where = ["LOWER(t.status) IN ('running', 'in_progress', 'completed')"];
 
         if (trip_id) {
             params.push(Number(trip_id));
@@ -91,14 +91,14 @@ app.get('/analytics/fuel/anomalies', async (req, res) => {
             `SELECT
                 t.trip_id,
                 t.truck_id,
-                COALESCE(t.distance_km, 0) AS distance_km,
+                COALESCE(NULLIF(t.gps_distance_km, 0), t.distance_km, 0) AS distance_km,
                 COALESCE(tr.mileage_kmpl, 4.5) AS truck_mileage,
                 COALESCE(SUM(COALESCE(f.fuel_filled, f.liters, 0)), 0) AS actual_fuel
              FROM trips t
              JOIN trucks tr ON tr.truck_id = t.truck_id
              LEFT JOIN fuel_logs f ON f.trip_id = t.trip_id
              ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-             GROUP BY t.trip_id, t.truck_id, t.distance_km, tr.mileage_kmpl
+             GROUP BY t.trip_id, t.truck_id, t.gps_distance_km, t.distance_km, tr.mileage_kmpl
              ORDER BY t.trip_id DESC`,
             params
         );
@@ -158,7 +158,7 @@ app.get('/analytics/backhaul/suggestions', async (req, res) => {
         const completedTrips = await pool.query(
             `SELECT trip_id, truck_id, destination, end_time
              FROM trips
-             WHERE status = 'Completed'
+               WHERE LOWER(status) = 'completed'
              ORDER BY end_time DESC NULLS LAST
              LIMIT 100`
         );
@@ -232,7 +232,13 @@ app.get('/analytics/overview', async (req, res) => {
         const [fuel, backhaul] = await Promise.all([
             pool.query(`
                 SELECT
-                    COUNT(*) FILTER (WHERE COALESCE(actual.actual_fuel, 0) > (COALESCE(t.distance_km,0) / GREATEST(COALESCE(tr.mileage_kmpl,4.5), 0.1)) * 1.2) AS anomaly_count
+                    COUNT(*) FILTER (
+                        WHERE COALESCE(NULLIF(t.gps_distance_km, 0), t.distance_km, 0) > 0
+                          AND COALESCE(actual.actual_fuel, 0) > (
+                                COALESCE(NULLIF(t.gps_distance_km, 0), t.distance_km, 0)
+                                / GREATEST(COALESCE(tr.mileage_kmpl,4.5), 0.1)
+                            ) * 1.2
+                    ) AS anomaly_count
                 FROM trips t
                 JOIN trucks tr ON tr.truck_id = t.truck_id
                 LEFT JOIN (
@@ -240,6 +246,7 @@ app.get('/analytics/overview', async (req, res) => {
                     FROM fuel_logs
                     GROUP BY trip_id
                 ) actual ON actual.trip_id = t.trip_id
+                WHERE LOWER(t.status) IN ('running', 'in_progress', 'completed')
             `),
             pool.query(`SELECT COUNT(*) AS pending_booking_count FROM booking_requests WHERE status = 'pending'`)
         ]);

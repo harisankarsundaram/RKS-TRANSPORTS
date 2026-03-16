@@ -38,8 +38,16 @@ docker compose up --build
 
 ## Mock GPS Provider Modes
 
-`mock-gps-service` supports route provider separation so you can keep synthetic GPS now and plug a real provider later:
+`mock-gps-service` supports free routing providers so live tracking can follow real road geometry and improve route-deviation alerts + fuel anomaly accuracy:
 
-- `GPS_ROUTE_PROVIDER=mock` (default): uses DB route or synthetic route fallback.
-- `GPS_ROUTE_PROVIDER=external`: uses the external provider hook in `mock-gps-service/src/providers/externalRouteProvider.js`.
-- `REAL_GPS_API_KEY`: optional key consumed by your external provider implementation.
+- `GPS_ROUTE_PROVIDER=auto` (default): tries external road routing first when DB polyline is weak, then falls back to DB route, then synthetic.
+- `GPS_ROUTE_PROVIDER=external`: always tries external route first.
+- `GPS_ROUTE_PROVIDER=mock`: uses DB route or synthetic fallback only.
+- `GPS_ROUTE_ENGINE=openrouteservice` (default): uses OpenRouteService when `OPENROUTESERVICE_API_KEY` is available.
+- `GPS_ROUTE_ENGINE=osrm`: skip key usage and use public OSRM only.
+- `OPENROUTESERVICE_API_KEY`: optional API key for free-tier OpenRouteService directions.
+
+Fallback chain is resilient:
+1. OpenRouteService (free tier key)
+2. Public OSRM
+3. Synthetic route

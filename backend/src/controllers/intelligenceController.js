@@ -202,7 +202,7 @@ const IntelligenceController = {
         try {
             const { trip_id: tripIdQuery } = req.query;
             const params = [];
-            const where = ["t.status IN ('Running', 'Completed')"];
+            const where = ["LOWER(t.status) IN ('running', 'in_progress', 'completed')"];
 
             if (tripIdQuery) {
                 params.push(Number(tripIdQuery));
@@ -395,11 +395,12 @@ const IntelligenceController = {
                     t.trip_id,
                     t.truck_id,
                     t.distance_km,
+                    COALESCE(t.gps_distance_km, 0) AS gps_distance_km,
                     COALESCE(tr.route_polyline, t.route_polyline) AS route_polyline,
                     t.planned_arrival_time
                  FROM trips t
                  LEFT JOIN trip_routes tr ON tr.trip_id = t.trip_id
-                 WHERE t.status = 'Running'`
+                 WHERE LOWER(t.status) IN ('running', 'in_progress')`
             );
 
             const createdAlerts = [];
@@ -415,7 +416,9 @@ const IntelligenceController = {
                 const routeDistance = route.length > 1
                     ? sumDistance(route)
                     : Number(trip.distance_km || 0);
-                const travelledDistance = sumDistance(logs);
+                const logDistance = sumDistance(logs);
+                const trackedDistance = Number(trip.gps_distance_km || 0);
+                const travelledDistance = Math.max(logDistance, trackedDistance);
                 const distanceRemaining = Math.max(routeDistance - travelledDistance, 0);
 
                 const speedSamples = logs.slice(-12).map((row) => row.speed).filter((speed) => speed > 0);

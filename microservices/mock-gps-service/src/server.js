@@ -18,6 +18,59 @@ function randomBetween(min, max) {
     return (Math.random() * (max - min)) + min;
 }
 
+function toRadians(degrees) {
+    return (degrees * Math.PI) / 180;
+}
+
+function distanceKm(start, end) {
+    const dLat = toRadians(end.latitude - start.latitude);
+    const dLon = toRadians(end.longitude - start.longitude);
+
+    const lat1 = toRadians(start.latitude);
+    const lat2 = toRadians(end.latitude);
+
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1) * Math.cos(lat2);
+
+    return 6371 * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+function parseRoutePolyline(rawPolyline) {
+    if (!rawPolyline) {
+        return [];
+    }
+
+    try {
+        const parsed = JSON.parse(rawPolyline);
+        if (!Array.isArray(parsed)) {
+            return [];
+        }
+
+        return parsed
+            .map((point) => {
+                if (Array.isArray(point) && point.length >= 2) {
+                    return {
+                        longitude: Number(point[0]),
+                        latitude: Number(point[1])
+                    };
+                }
+
+                if (point && point.longitude !== undefined && point.latitude !== undefined) {
+                    return {
+                        longitude: Number(point.longitude),
+                        latitude: Number(point.latitude)
+                    };
+                }
+
+                return null;
+            })
+            .filter((point) => point && Number.isFinite(point.latitude) && Number.isFinite(point.longitude));
+    } catch {
+        return [];
+    }
+}
+
 function squaredDistance(a, b) {
     const dLat = a.latitude - b.latitude;
     const dLng = a.longitude - b.longitude;
@@ -90,7 +143,7 @@ function densifyRoute(route, minPoints = MIN_ROUTE_POINTS) {
 }
 
 async function fetchRunningTrips(optionalTripId = null) {
-    const where = ['status = \'Running\''];
+    const where = ["LOWER(t.status) IN ('running', 'in_progress')"];
     const params = [];
 
     if (optionalTripId) {
@@ -136,17 +189,36 @@ async function insertGpsLog({ truckId, tripId, latitude, longitude, speed }) {
     );
 }
 
-async function finishTrip(tripId) {
+async function addTripGpsDistance(tripId, distanceValueKm) {
+    const safeDistance = Number(distanceValueKm || 0);
+    if (!Number.isFinite(safeDistance) || safeDistance <= 0) {
+        return;
+    }
+
+    await pool.query(
+        `UPDATE trips
+         SET gps_distance_km = COALESCE(gps_distance_km, 0) + $1
+         WHERE trip_id = $2`,
+        [safeDistance, tripId]
+    );
+}
+
+async function finishTrip(tripId, finalDistanceKm = null) {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
 
         const tripResult = await client.query(
             `UPDATE trips
-             SET status = 'Completed', end_time = COALESCE(end_time, NOW())
+             SET status = 'Completed',
+                 end_time = COALESCE(end_time, NOW()),
+                 gps_distance_km = CASE
+                     WHEN $2::numeric IS NULL THEN COALESCE(gps_distance_km, 0)
+                     ELSE GREATEST(COALESCE(gps_distance_km, 0), $2::numeric)
+                 END
              WHERE trip_id = $1
              RETURNING truck_id, driver_id`,
-            [tripId]
+            [tripId, finalDistanceKm]
         );
 
         if (tripResult.rows.length > 0) {
@@ -165,7 +237,16 @@ async function finishTrip(tripId) {
 }
 
 async function persistRouteIfMissing(trip, route) {
-    if (trip.route_polyline) {
+    if (!Array.isArray(route) || route.length < 2) {
+        return;
+    }
+
+    const existingRoute = parseRoutePolyline(trip.route_polyline);
+    const shouldUpsert =
+        existingRoute.length === 0 ||
+        existingRoute.length < Math.max(Math.floor(route.length * 0.75), 12);
+
+    if (!shouldUpsert) {
         return;
     }
 
@@ -173,7 +254,13 @@ async function persistRouteIfMissing(trip, route) {
     const distance = Number(routeDistanceKm(route).toFixed(2));
     const estimatedMinutes = Number(((distance / 42) * 60).toFixed(2));
 
-    await pool.query('UPDATE trips SET route_polyline = $1 WHERE trip_id = $2', [polyline, trip.trip_id]);
+    await pool.query(
+        `UPDATE trips
+         SET route_polyline = $1,
+             distance_km = $3
+         WHERE trip_id = $2`,
+        [polyline, trip.trip_id, distance]
+    );
     await pool.query(
         `INSERT INTO trip_routes (trip_id, route_polyline, distance, estimated_time)
          VALUES ($1, $2, $3, $4)
@@ -202,6 +289,7 @@ async function tickOneTrip(trip) {
     await persistRouteIfMissing(trip, route);
 
     const simulationRoute = densifyRoute(route);
+    const simulationRouteDistance = Number(routeDistanceKm(simulationRoute).toFixed(3));
 
     const lastPoint = await latestTripPoint(trip.trip_id);
 
@@ -236,6 +324,16 @@ async function tickOneTrip(trip) {
     }
 
     const point = simulationRoute[nextIndex];
+    const previousPoint = lastPoint
+        ? {
+            latitude: Number(lastPoint.latitude),
+            longitude: Number(lastPoint.longitude)
+        }
+        : (nextIndex > 0 ? simulationRoute[nextIndex - 1] : null);
+
+    const distanceIncrement = previousPoint
+        ? distanceKm(previousPoint, point)
+        : 0;
 
     await insertGpsLog({
         truckId: trip.truck_id,
@@ -245,8 +343,10 @@ async function tickOneTrip(trip) {
         speed
     });
 
+    await addTripGpsDistance(trip.trip_id, Number(distanceIncrement.toFixed(4)));
+
     if (nextIndex >= simulationRoute.length - 1) {
-        await finishTrip(trip.trip_id);
+        await finishTrip(trip.trip_id, simulationRouteDistance);
         return {
             trip_id: trip.trip_id,
             truck_id: trip.truck_id,
@@ -310,7 +410,7 @@ app.get('/health', async (req, res) => {
             service: 'mock-gps-service',
             tick_ms: TICK_MS,
             min_route_points: MIN_ROUTE_POINTS,
-            route_provider: String(process.env.GPS_ROUTE_PROVIDER || 'mock').toLowerCase(),
+            route_provider: String(process.env.GPS_ROUTE_PROVIDER || 'auto').toLowerCase(),
             running: Boolean(intervalHandle),
             timestamp: new Date().toISOString()
         });
@@ -345,7 +445,7 @@ app.get('/mock-gps/state', async (req, res) => {
         return res.json({
             success: true,
             service: 'mock-gps-service',
-            route_provider: String(process.env.GPS_ROUTE_PROVIDER || 'mock').toLowerCase(),
+            route_provider: String(process.env.GPS_ROUTE_PROVIDER || 'auto').toLowerCase(),
             running: Boolean(intervalHandle),
             running_trip_count: runningTrips.length,
             tick_ms: TICK_MS,

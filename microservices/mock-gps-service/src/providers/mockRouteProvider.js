@@ -1,5 +1,7 @@
 const { getExternalRoute } = require('./externalRouteProvider');
 
+const MIN_ROUTE_POINTS_FOR_DB_ONLY = Number(process.env.GPS_ROUTE_MIN_POINTS || 24);
+
 const CITY_COORDINATES = {
     Chennai: { latitude: 13.0827, longitude: 80.2707 },
     Bangalore: { latitude: 12.9716, longitude: 77.5946 },
@@ -114,17 +116,25 @@ function buildSyntheticRoute(source, destination, points = 8) {
 
 async function resolveRoutePoints({ rawPolyline, source, destination, distanceHintKm = 0 }) {
     const parsed = parseRoutePolyline(rawPolyline);
-    if (parsed.length > 1) {
-        return { route: parsed, strategy: 'db' };
-    }
+    const providerMode = String(process.env.GPS_ROUTE_PROVIDER || 'auto').toLowerCase();
 
-    const providerMode = String(process.env.GPS_ROUTE_PROVIDER || 'mock').toLowerCase();
+    const shouldTryExternal =
+        providerMode === 'external' ||
+        (providerMode === 'auto' && parsed.length < MIN_ROUTE_POINTS_FOR_DB_ONLY);
 
-    if (providerMode === 'external') {
-        const externalRoute = await getExternalRoute({ source, destination, apiKey: process.env.REAL_GPS_API_KEY });
+    if (shouldTryExternal) {
+        const externalRoute = await getExternalRoute({
+            source,
+            destination,
+            apiKey: process.env.OPENROUTESERVICE_API_KEY || process.env.REAL_GPS_API_KEY
+        });
         if (Array.isArray(externalRoute) && externalRoute.length > 1) {
             return { route: externalRoute, strategy: 'external' };
         }
+    }
+
+    if (parsed.length > 1) {
+        return { route: parsed, strategy: 'db' };
     }
 
     const syntheticPoints = distanceHintKm > 1000 ? 12 : 8;

@@ -3,6 +3,10 @@ const pool = require('../config/db');
 const initDatabase = require('../config/initDb');
 
 const DEFAULT_PASSWORD = '1234';
+const NOMINATIM_ENDPOINT = 'https://nominatim.openstreetmap.org/search';
+const OPENROUTESERVICE_ENDPOINT = 'https://api.openrouteservice.org/v2/directions/driving-car';
+const OSRM_ENDPOINT = 'https://router.project-osrm.org/route/v1/driving';
+const ROUTE_TIMEOUT_MS = Number(process.env.SEED_ROUTE_TIMEOUT_MS || 12000);
 
 const CITY_COORDINATES = {
     Chennai: { latitude: 13.0827, longitude: 80.2707 },
@@ -22,6 +26,9 @@ const CITY_COORDINATES = {
     Mangalore: { latitude: 12.9141, longitude: 74.856 },
     Nagpur: { latitude: 21.1458, longitude: 79.0882 }
 };
+
+const geocodeCache = new Map();
+const routeCache = new Map();
 
 function toRadians(degrees) {
     return (degrees * Math.PI) / 180;
@@ -86,6 +93,199 @@ function buildSyntheticRoute(sourceCity, destinationCity, points = 8) {
     }
 
     return route;
+}
+
+async function fetchJsonWithTimeout(url, options = {}, timeoutMs = ROUTE_TIMEOUT_MS) {
+    const controller = new AbortController();
+    const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+        const response = await fetch(url, {
+            ...options,
+            signal: controller.signal
+        });
+
+        if (!response.ok) {
+            throw new Error(`Route request failed (${response.status})`);
+        }
+
+        return response.json();
+    } finally {
+        clearTimeout(timeoutHandle);
+    }
+}
+
+function normalizePoint(latitude, longitude) {
+    const lat = Number(latitude);
+    const lon = Number(longitude);
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        return null;
+    }
+
+    return {
+        latitude: Number(lat.toFixed(6)),
+        longitude: Number(lon.toFixed(6))
+    };
+}
+
+async function geocodeLocation(locationText) {
+    const normalized = String(locationText || '').trim();
+    if (!normalized) {
+        return null;
+    }
+
+    const cacheKey = normalized.toLowerCase();
+    if (geocodeCache.has(cacheKey)) {
+        return geocodeCache.get(cacheKey);
+    }
+
+    try {
+        const query = new URLSearchParams({
+            q: normalized,
+            format: 'json',
+            limit: '1'
+        });
+
+        const payload = await fetchJsonWithTimeout(
+            `${NOMINATIM_ENDPOINT}?${query.toString()}`,
+            {
+                headers: {
+                    'User-Agent': 'rks-seed-script/1.0'
+                }
+            }
+        );
+
+        const hit = Array.isArray(payload) ? payload[0] : null;
+        const point = hit ? normalizePoint(hit.lat, hit.lon) : null;
+        geocodeCache.set(cacheKey, point);
+        return point;
+    } catch {
+        geocodeCache.set(cacheKey, null);
+        return null;
+    }
+}
+
+function normalizeCoordinates(coordinates) {
+    if (!Array.isArray(coordinates)) {
+        return [];
+    }
+
+    return coordinates
+        .map((entry) => {
+            if (!Array.isArray(entry) || entry.length < 2) {
+                return null;
+            }
+
+            return normalizePoint(entry[1], entry[0]);
+        })
+        .filter((point) => point !== null);
+}
+
+async function fetchRouteFromOpenRouteService(start, end, apiKey) {
+    const normalizedKey = String(apiKey || '').trim();
+    if (!normalizedKey) {
+        return null;
+    }
+
+    try {
+        const query = new URLSearchParams({
+            api_key: normalizedKey,
+            start: `${start.longitude},${start.latitude}`,
+            end: `${end.longitude},${end.latitude}`,
+            geometry_format: 'geojson'
+        });
+
+        const payload = await fetchJsonWithTimeout(
+            `${OPENROUTESERVICE_ENDPOINT}?${query.toString()}`,
+            {
+                headers: {
+                    Accept: 'application/json, application/geo+json',
+                    'Content-Type': 'application/json; charset=utf-8',
+                    'User-Agent': 'rks-seed-script/1.0'
+                }
+            }
+        );
+
+        const geoJsonCoordinates = payload?.features?.[0]?.geometry?.coordinates;
+        const legacyCoordinates = payload?.routes?.[0]?.geometry?.coordinates;
+        const coordinates = Array.isArray(geoJsonCoordinates) ? geoJsonCoordinates : legacyCoordinates;
+        const normalizedRoute = normalizeCoordinates(coordinates);
+
+        return normalizedRoute.length > 1 ? normalizedRoute : null;
+    } catch {
+        return null;
+    }
+}
+
+async function fetchRouteFromOsrm(start, end) {
+    try {
+        const query = new URLSearchParams({
+            alternatives: 'false',
+            overview: 'full',
+            geometries: 'geojson',
+            steps: 'false'
+        });
+
+        const payload = await fetchJsonWithTimeout(
+            `${OSRM_ENDPOINT}/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?${query.toString()}`,
+            {
+                headers: {
+                    'User-Agent': 'rks-seed-script/1.0'
+                }
+            }
+        );
+
+        const routeCoordinates = payload?.routes?.[0]?.geometry?.coordinates;
+        const normalizedRoute = normalizeCoordinates(routeCoordinates);
+
+        return normalizedRoute.length > 1 ? normalizedRoute : null;
+    } catch {
+        return null;
+    }
+}
+
+async function buildRouteWithFallback(sourceCity, destinationCity, syntheticPoints = 8) {
+    const routeCacheKey = `${String(sourceCity || '').trim().toLowerCase()}::${String(destinationCity || '').trim().toLowerCase()}`;
+    if (routeCache.has(routeCacheKey)) {
+        return routeCache.get(routeCacheKey);
+    }
+
+    const providerMode = String(process.env.SEED_ROUTE_PROVIDER || 'auto').toLowerCase();
+    const routeEngine = String(process.env.SEED_ROUTE_ENGINE || 'openrouteservice').toLowerCase();
+
+    const shouldUseExternal = providerMode === 'auto' || providerMode === 'external';
+    if (shouldUseExternal) {
+        const [start, end] = await Promise.all([
+            geocodeLocation(sourceCity),
+            geocodeLocation(destinationCity)
+        ]);
+
+        if (start && end) {
+            let externalRoute = null;
+
+            if (routeEngine === 'openrouteservice' || routeEngine === 'ors' || routeEngine === 'auto') {
+                externalRoute = await fetchRouteFromOpenRouteService(
+                    start,
+                    end,
+                    process.env.OPENROUTESERVICE_API_KEY || process.env.REAL_GPS_API_KEY
+                );
+            }
+
+            if (!externalRoute && (routeEngine === 'osrm' || routeEngine === 'openrouteservice' || routeEngine === 'ors' || routeEngine === 'auto')) {
+                externalRoute = await fetchRouteFromOsrm(start, end);
+            }
+
+            if (externalRoute && externalRoute.length > 1) {
+                routeCache.set(routeCacheKey, externalRoute);
+                return externalRoute;
+            }
+        }
+    }
+
+    const syntheticRoute = buildSyntheticRoute(sourceCity, destinationCity, syntheticPoints);
+    routeCache.set(routeCacheKey, syntheticRoute);
+    return syntheticRoute;
 }
 
 function asPolyline(route) {
@@ -399,7 +599,7 @@ async function seed() {
         for (const seedTrip of tripSeeds) {
             const truck = truckByNumber.get(seedTrip.truck_number);
             const driverId = driverByEmail.get(seedTrip.driver_email);
-            const route = buildSyntheticRoute(seedTrip.source, seedTrip.destination, 9);
+            const route = await buildRouteWithFallback(seedTrip.source, seedTrip.destination, 9);
             const totalDistance = Number(routeDistanceKm(route).toFixed(2));
             const travelledDistance = Number((totalDistance * (seedTrip.active_progress || 0)).toFixed(2));
 

@@ -58,7 +58,7 @@ function parsePolyline(raw) {
 
                 return null;
             })
-            .filter(Boolean);
+            .filter((point) => Number.isFinite(point?.latitude) && Number.isFinite(point?.longitude));
     } catch (error) {
         return [];
     }
@@ -219,61 +219,69 @@ async function evaluateTrip(trip) {
         }
     }
 
-    if (route.length > 1) {
-        const logsResult = await pool.query(
-            `SELECT latitude, longitude, COALESCE(speed_kmph, 0) AS speed, recorded_at
-             FROM gps_logs
-             WHERE trip_id = $1
-             ORDER BY recorded_at ASC`,
-            [trip.trip_id]
-        );
+    const logsResult = await pool.query(
+        `SELECT latitude, longitude, COALESCE(speed_kmph, 0) AS speed, recorded_at
+         FROM gps_logs
+         WHERE trip_id = $1
+         ORDER BY recorded_at ASC`,
+        [trip.trip_id]
+    );
 
-        const logs = logsResult.rows.map((row) => ({
-            latitude: Number(row.latitude),
-            longitude: Number(row.longitude),
-            speed: Number(row.speed),
-            recorded_at: row.recorded_at
-        }));
+    const logs = logsResult.rows.map((row) => ({
+        latitude: Number(row.latitude),
+        longitude: Number(row.longitude),
+        speed: Number(row.speed),
+        recorded_at: row.recorded_at
+    }));
 
-        const travelledDistance = sumDistance(logs);
-        const totalDistance = sumDistance(route);
-        const distanceRemaining = Math.max(totalDistance - travelledDistance, 0);
+    const logDistance = sumDistance(logs);
+    const trackedDistance = Number(trip.gps_distance_km || 0);
+    const routeDistance = route.length > 1 ? sumDistance(route) : 0;
+    const totalDistance = Math.max(routeDistance, Number(trip.distance_km || 0), trackedDistance, logDistance);
 
-        const speedSamples = logs.map((item) => item.speed).filter((speed) => speed > 0);
-        const historicalAvgSpeed = speedSamples.length
-            ? speedSamples.reduce((sum, speed) => sum + speed, 0) / speedSamples.length
-            : 45;
+    if (totalDistance > 0) {
+        try {
+            const travelledDistance = Math.max(logDistance, trackedDistance);
+            const distanceRemaining = Math.max(totalDistance - travelledDistance, 0);
 
-        const etaResponse = await axios.post(`${ML_SERVICE_URL}/predict/eta`, {
-            distance_remaining: Number(distanceRemaining.toFixed(3)),
-            current_speed: Number(currentSpeed.toFixed(2)),
-            historical_avg_speed: Number(historicalAvgSpeed.toFixed(2)),
-            trip_distance: Number(totalDistance.toFixed(3)),
-            road_type: 'highway'
-        }, { timeout: 12000 });
+            const speedSamples = logs.map((item) => item.speed).filter((speed) => speed > 0);
+            const historicalAvgSpeed = speedSamples.length
+                ? speedSamples.reduce((sum, speed) => sum + speed, 0) / speedSamples.length
+                : 45;
 
-        const predictedEta = Number(etaResponse.data?.eta_minutes || 0);
-        const plannedArrival = trip.planned_arrival_time || new Date(Date.now() + (120 * 60 * 1000)).toISOString();
-        const trafficLevel = currentSpeed <= 25 ? 0.9 : currentSpeed <= 45 ? 0.6 : 0.35;
+            const etaResponse = await axios.post(`${ML_SERVICE_URL}/predict/eta`, {
+                distance_remaining: Number(distanceRemaining.toFixed(3)),
+                current_speed: Number(currentSpeed.toFixed(2)),
+                historical_avg_speed: Number(historicalAvgSpeed.toFixed(2)),
+                trip_distance: Number(totalDistance.toFixed(3)),
+                road_type: 'highway'
+            }, { timeout: 12000 });
 
-        const delayResponse = await axios.post(`${ML_SERVICE_URL}/predict/delay`, {
-            planned_arrival_time: plannedArrival,
-            predicted_eta: predictedEta,
-            trip_distance: Number(totalDistance.toFixed(3)),
-            traffic_level: trafficLevel
-        }, { timeout: 12000 });
+            const predictedEta = Number(etaResponse.data?.eta_minutes || 0);
+            const plannedArrival = trip.planned_arrival_time || new Date(Date.now() + (120 * 60 * 1000)).toISOString();
+            const trafficLevel = currentSpeed <= 25 ? 0.9 : currentSpeed <= 45 ? 0.6 : 0.35;
 
-        const risk = Number(delayResponse.data?.delay_risk_percentage || 0);
-        if (risk >= 60) {
-            const alert = await createAlertIfNotRecent({
-                truck_id: trip.truck_id,
-                trip_id: trip.trip_id,
-                alert_type: 'delay_risk',
-                description: `Delay risk ${risk.toFixed(1)}% (ETA ${predictedEta.toFixed(1)} min)`
-            });
-            if (alert) {
-                created.push(alert);
+            const delayResponse = await axios.post(`${ML_SERVICE_URL}/predict/delay`, {
+                planned_arrival_time: plannedArrival,
+                predicted_eta: predictedEta,
+                trip_distance: Number(totalDistance.toFixed(3)),
+                traffic_level: trafficLevel
+            }, { timeout: 12000 });
+
+            const risk = Number(delayResponse.data?.delay_risk_percentage || 0);
+            if (risk >= 60) {
+                const alert = await createAlertIfNotRecent({
+                    truck_id: trip.truck_id,
+                    trip_id: trip.trip_id,
+                    alert_type: 'delay_risk',
+                    description: `Delay risk ${risk.toFixed(1)}% (ETA ${predictedEta.toFixed(1)} min)`
+                });
+                if (alert) {
+                    created.push(alert);
+                }
             }
+        } catch (error) {
+            console.warn(`Delay risk prediction skipped for trip ${trip.trip_id}: ${error.message}`);
         }
     }
 
@@ -283,11 +291,13 @@ async function evaluateTrip(trip) {
 async function evaluateAlerts() {
     const runningTrips = await pool.query(
         `SELECT t.trip_id, t.truck_id,
+                COALESCE(t.distance_km, 0) AS distance_km,
+                COALESCE(t.gps_distance_km, 0) AS gps_distance_km,
                 COALESCE(tr.route_polyline, t.route_polyline) AS route_polyline,
                 t.planned_arrival_time
          FROM trips t
          LEFT JOIN trip_routes tr ON tr.trip_id = t.trip_id
-         WHERE t.status = 'Running'`
+         WHERE LOWER(t.status) IN ('running', 'in_progress')`
     );
 
     const alerts = [];
