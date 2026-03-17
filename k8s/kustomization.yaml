@@ -1,0 +1,29 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secret.example.yaml
+  - deployments/auth-service-deployment.yaml
+  - deployments/fleet-service-deployment.yaml
+  - deployments/trip-service-deployment.yaml
+  - deployments/booking-service-deployment.yaml
+  - deployments/tracking-service-deployment.yaml
+  - deployments/mock-gps-service-deployment.yaml
+  - deployments/analytics-service-deployment.yaml
+  - deployments/alert-service-deployment.yaml
+  - deployments/optimization-service-deployment.yaml
+  - deployments/ml-service-deployment.yaml
+  - deployments/api-gateway-deployment.yaml
+  - services/auth-service-service.yaml
+  - services/fleet-service-service.yaml
+  - services/trip-service-service.yaml
+  - services/booking-service-service.yaml
+  - services/tracking-service-service.yaml
+  - services/mock-gps-service-service.yaml
+  - services/analytics-service-service.yaml
+  - services/alert-service-service.yaml
+  - services/optimization-service-service.yaml
+  - services/ml-service-service.yaml
+  - services/api-gateway-service.yaml
+  - ingress/api-gateway-ingress.yaml

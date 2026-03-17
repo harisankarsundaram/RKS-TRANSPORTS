@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trip-service
+  namespace: rks-logistics
+  labels:
+    app: trip-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: trip-service
+  template:
+    metadata:
+      labels:
+        app: trip-service
+    spec:
+      containers:
+        - name: trip-service
+          image: your-registry/rks-trip-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3203
+          envFrom:
+            - configMapRef:
+                name: rks-shared-config
+            - secretRef:
+                name: rks-shared-secrets
+          env:
+            - name: PORT
+              value: "3203"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rks-shared-secrets
+                  key: DATABASE_URL
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3203
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3203
+            initialDelaySeconds: 25
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: trip-service
+  namespace: rks-logistics
+spec:
+  type: ClusterIP
+  selector:
+    app: trip-service
+  ports:
+    - name: http
+      port: 3203
+      targetPort: 3203
+      protocol: TCP

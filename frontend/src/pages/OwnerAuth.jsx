@@ -40,7 +40,8 @@ function OwnerAuth() {
       email: signupEmail,
       password: signupPassword,
       name: signupName,
-      phone: signupPhone
+      phone: signupPhone,
+      role: 'driver'
     };
     // DEBUG: Alert payload to verify data
     // alert('Sending: ' + JSON.stringify(payload));

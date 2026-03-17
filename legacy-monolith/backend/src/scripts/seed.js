@@ -379,8 +379,8 @@ async function seed() {
 
         for (const truck of trucks) {
             const result = await client.query(
-                `INSERT INTO trucks (truck_number, capacity, mileage_kmpl, status, insurance_expiry, fitness_expiry)
-                 VALUES ($1, $2, $3, $4, $5, $6)
+                `INSERT INTO trucks (truck_number, capacity, capacity_tons, mileage_kmpl, status, insurance_expiry, fitness_expiry)
+                 VALUES ($1, $2, $2, $3, $4, $5, $6)
                  RETURNING truck_id, truck_number, mileage_kmpl`,
                 [
                     truck.truck_number,
@@ -619,6 +619,7 @@ async function seed() {
                     destination,
                     route_polyline,
                     distance_km,
+                    trip_distance,
                     gps_distance_km,
                     base_freight,
                     toll_amount,
@@ -630,12 +631,14 @@ async function seed() {
                     empty_km,
                     loaded_km,
                     start_time,
+                    planned_start_time,
                     planned_arrival_time,
+                    planned_end_time,
                     end_time,
                     status,
                     created_at
                 ) VALUES (
-                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22
+                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25
                 ) RETURNING trip_id`,
                 [
                     truck.truck_id,
@@ -644,6 +647,7 @@ async function seed() {
                     seedTrip.source,
                     seedTrip.destination,
                     asPolyline(route),
+                    totalDistance,
                     totalDistance,
                     travelledDistance,
                     seedTrip.base_freight,
@@ -656,6 +660,8 @@ async function seed() {
                     emptyKm,
                     loadedKm,
                     seedTrip.start_time,
+                    seedTrip.start_time,
+                    seedTrip.planned_arrival_time || null,
                     seedTrip.planned_arrival_time || null,
                     seedTrip.end_time,
                     seedTrip.status,
@@ -723,8 +729,8 @@ async function seed() {
                 }
 
                 await client.query(
-                    `INSERT INTO gps_logs (truck_id, trip_id, latitude, longitude, speed_kmph, ignition, recorded_at)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                    `INSERT INTO gps_logs (truck_id, trip_id, latitude, longitude, speed_kmph, speed, ignition, recorded_at, timestamp)
+                     VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $7)`,
                     [
                         seededTrip.truck_id,
                         seededTrip.trip_id,

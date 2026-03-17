@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import apiClient from '../api/client';
 import './Management.css';
 
@@ -13,12 +13,7 @@ function InvoiceManagement() {
     const [generateForm, setGenerateForm] = useState({ trip_id: '', due_date: '' });
     const [paymentAmount, setPaymentAmount] = useState('');
 
-    useEffect(() => {
-        fetchInvoices();
-        fetchCompletedTrips();
-    }, []);
-
-    async function fetchInvoices() {
+    const fetchInvoices = useCallback(async () => {
         setLoading(true);
         try {
             const filters = filterStatus !== 'All' ? `?status=${filterStatus}` : '';
@@ -26,16 +21,19 @@ function InvoiceManagement() {
             if (res.data.success) setInvoices(res.data.data);
         } catch (err) { console.error(err); }
         finally { setLoading(false); }
-    }
+    }, [filterStatus]);
 
-    async function fetchCompletedTrips() {
+    const fetchCompletedTrips = useCallback(async () => {
         try {
             const res = await apiClient.get('/trips?status=Completed');
             if (res.data.success) setCompletedTrips(res.data.data);
         } catch (e) { console.error(e); }
-    }
+    }, []);
 
-    useEffect(() => { fetchInvoices(); }, [filterStatus]);
+    useEffect(() => {
+        fetchInvoices();
+        fetchCompletedTrips();
+    }, [fetchInvoices, fetchCompletedTrips]);
 
     const showMsg = (text, type = 'success') => {
         setMessage({ text, type });

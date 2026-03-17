@@ -16,15 +16,6 @@ const CountUp = ({ end, duration = 2000, suffix = '', prefix = '' }) => {
     useEffect(() => {
         if (isVisible && !hasAnimated.current) {
             hasAnimated.current = true
-            let start = 0
-            // if end is very large, step accordingly?
-            // For simple linear easing:
-            const stepTime = Math.abs(Math.floor(duration / end))
-
-            // If end is small (like 24 or 60), simple interval works.
-            // If it's large, we might need a better logic, but for 60/40 it's fine.
-            // Better approach: use requestAnimationFrame or calculation based on time
-
             const startTime = Date.now()
 
             const timer = setInterval(() => {
@@ -60,6 +51,7 @@ function useOnScreen(ref) {
     const [isIntersecting, setIntersecting] = useState(false)
 
     useEffect(() => {
+        const element = ref.current
         const observer = new IntersectionObserver(
             ([entry]) => {
                 if (entry.isIntersecting) {
@@ -69,13 +61,13 @@ function useOnScreen(ref) {
             { threshold: 0.1 }
         )
 
-        if (ref.current) {
-            observer.observe(ref.current)
+        if (element) {
+            observer.observe(element)
         }
 
         return () => {
-            if (ref.current) {
-                observer.unobserve(ref.current)
+            if (element) {
+                observer.unobserve(element)
             }
         }
     }, [ref])

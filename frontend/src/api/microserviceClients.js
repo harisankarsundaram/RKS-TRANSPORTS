@@ -9,15 +9,18 @@ function createClient(baseURL) {
     });
 }
 
+const gatewayBaseUrl = (import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:3200/api').replace(/\/+$/, '');
+
+// Keep all service calls gateway-routed so deployed frontends do not depend on direct service ports.
 export const microserviceClients = {
-    booking: createClient(import.meta.env.VITE_BOOKING_SERVICE_URL || 'http://localhost:3104'),
-    fleet: createClient(import.meta.env.VITE_FLEET_SERVICE_URL || 'http://localhost:3102'),
-    trip: createClient(import.meta.env.VITE_TRIP_SERVICE_URL || 'http://localhost:3103'),
-    tracking: createClient(import.meta.env.VITE_TRACKING_SERVICE_URL || 'http://localhost:3105'),
-    analytics: createClient(import.meta.env.VITE_ANALYTICS_SERVICE_URL || 'http://localhost:3107'),
-    alert: createClient(import.meta.env.VITE_ALERT_SERVICE_URL || 'http://localhost:3108'),
-    ml: createClient(import.meta.env.VITE_ML_SERVICE_URL || 'http://localhost:8000'),
-    mockGps: createClient(import.meta.env.VITE_MOCK_GPS_SERVICE_URL || 'http://localhost:3106')
+    booking: createClient(gatewayBaseUrl),
+    fleet: createClient(gatewayBaseUrl),
+    trip: createClient(gatewayBaseUrl),
+    tracking: createClient(gatewayBaseUrl),
+    analytics: createClient(gatewayBaseUrl),
+    alert: createClient(gatewayBaseUrl),
+    ml: createClient(gatewayBaseUrl),
+    mockGps: createClient(gatewayBaseUrl)
 };
 
 export function setMicroserviceAuthToken(token) {

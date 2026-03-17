@@ -10,7 +10,6 @@ const app = express();
 const PORT = Number(process.env.PORT || 3201);
 const JWT_SECRET = process.env.JWT_SECRET || 'replace_this_secret';
 
-app.use(cors());
 app.use(express.json());
 
 async function ensureSchema() {
@@ -36,6 +35,49 @@ async function ensureSchema() {
             created_at TIMESTAMP DEFAULT NOW()
         )
     `);
+
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS notifications (
+            notification_id SERIAL PRIMARY KEY,
+            user_id INTEGER REFERENCES users(user_id) ON DELETE CASCADE,
+            message TEXT NOT NULL,
+            type VARCHAR(50) NOT NULL,
+            is_read BOOLEAN DEFAULT FALSE,
+            related_trip_id INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id)');
+}
+
+async function seedDefaultUsers() {
+    const result = await pool.query('SELECT COUNT(*) FROM users');
+    if (Number(result.rows[0].count) > 0) return;
+
+    console.log('auth-service: No users found, seeding default users...');
+    const hash = await bcrypt.hash('password123', 10);
+
+    await pool.query(
+        `INSERT INTO users (email, password_hash, role, name, phone) VALUES
+            ($1, $2, 'admin',    'Admin User',   '9876543210'),
+            ($3, $2, 'manager',  'Manager User', '9876543211'),
+            ($4, $2, 'driver',   'Rajesh Kumar', '9876543212'),
+            ($5, $2, 'driver',   'Suresh Singh', '9876543213'),
+            ($6, $2, 'driver',   'Amit Patel',   '9876543214'),
+            ($7, $2, 'customer', 'Test Customer','9876543215')
+        ON CONFLICT (email) DO NOTHING`,
+        [
+            'admin@example.com', hash,
+            'manager@example.com',
+            'driver1@example.com',
+            'driver2@example.com',
+            'driver3@example.com',
+            'test@example.com'
+        ]
+    );
+
+    console.log('auth-service: Default users seeded successfully');
 }
 
 function signToken(user) {
@@ -58,6 +100,16 @@ function readBearerToken(req) {
         return null;
     }
     return token;
+}
+
+function decodeToken(req) {
+    const token = readBearerToken(req);
+    if (!token) return null;
+    try {
+        return jwt.verify(token, JWT_SECRET);
+    } catch {
+        return null;
+    }
 }
 
 app.get('/health', async (req, res) => {
@@ -176,7 +228,50 @@ app.get('/auth/me', async (req, res) => {
     }
 });
 
+// ========== NOTIFICATIONS ==========
+
+app.get('/notifications', async (req, res) => {
+    try {
+        const decoded = decodeToken(req);
+        const userId = decoded?.user_id || null;
+
+        let result;
+        if (userId) {
+            result = await pool.query(
+                'SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50',
+                [userId]
+            );
+        } else {
+            result = await pool.query(
+                'SELECT * FROM notifications ORDER BY created_at DESC LIMIT 50'
+            );
+        }
+
+        return res.json({ success: true, count: result.rows.length, data: result.rows });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.put('/notifications/read-all', async (req, res) => {
+    try {
+        const decoded = decodeToken(req);
+        const userId = decoded?.user_id || null;
+
+        if (userId) {
+            await pool.query('UPDATE notifications SET is_read = true WHERE user_id = $1', [userId]);
+        } else {
+            await pool.query('UPDATE notifications SET is_read = true');
+        }
+
+        return res.json({ success: true, message: 'All notifications marked as read' });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 ensureSchema()
+    .then(() => seedDefaultUsers())
     .then(() => {
         app.listen(PORT, () => {
             console.log(`auth-service running on port ${PORT}`);

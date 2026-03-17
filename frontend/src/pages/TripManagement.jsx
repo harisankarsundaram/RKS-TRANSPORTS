@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import apiClient from '../api/client';
 import './Management.css';
@@ -23,7 +23,7 @@ function TripManagement() {
         empty_km: '0', loaded_km: '0'
     });
 
-    const fetchDropdowns = async () => {
+    const fetchDropdowns = useCallback(async () => {
         if (user?.role === 'admin') {
             try {
                 const [truckRes, driverRes] = await Promise.all([
@@ -34,7 +34,7 @@ function TripManagement() {
                 if (driverRes.data.success) setDrivers(driverRes.data.data);
             } catch (e) { console.error(e); }
         }
-    };
+    }, [user?.role]);
 
     useEffect(() => {
         const init = async () => {
@@ -47,14 +47,9 @@ function TripManagement() {
             await fetchDropdowns();
         };
         init();
-    }, [user]);
+    }, [user, fetchDropdowns]);
 
-    useEffect(() => {
-        if (user?.role === 'driver' && !driverId) return;
-        fetchTrips();
-    }, [filter, driverId]);
-
-    const fetchTrips = async () => {
+    const fetchTrips = useCallback(async () => {
         setLoading(true);
         try {
             let url = filter === 'All' ? '/trips' : `/trips?status=${filter}`;
@@ -65,7 +60,12 @@ function TripManagement() {
             if (res.data.success) setTrips(res.data.data);
         } catch (error) { console.error(error); }
         finally { setLoading(false); }
-    };
+    }, [filter, user?.role, driverId]);
+
+    useEffect(() => {
+        if (user?.role === 'driver' && !driverId) return;
+        fetchTrips();
+    }, [user?.role, driverId, fetchTrips]);
 
     const showMsg = (text, type = 'success') => {
         setMessage({ text, type });

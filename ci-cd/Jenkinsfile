@@ -1,0 +1,129 @@
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        ansiColor('xterm')
+    }
+
+    triggers {
+        githubPush()
+    }
+
+    environment {
+        IMAGE_REGISTRY = 'docker.io/your-username'
+        IMAGE_TAG = "${env.BUILD_NUMBER}"
+        K8S_NAMESPACE = 'rks-logistics'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh '''
+                    set -e
+                    for dir in \
+                      services/api-gateway \
+                      services/auth-service \
+                      services/fleet-service \
+                      services/trip-service \
+                      services/booking-service \
+                      services/tracking-service \
+                      services/mock-gps-service \
+                      services/analytics-service \
+                      services/alert-service \
+                      services/optimization-service \
+                      frontend; do
+                      if [ -f "$dir/package.json" ]; then
+                        echo "Installing npm dependencies in $dir"
+                        (cd "$dir" && npm ci)
+                      fi
+                    done
+
+                    python3 -m pip install --upgrade pip
+                    python3 -m pip install -r services/ml-service/requirements.txt
+                    docker compose -f docker/docker-compose.yml --env-file docker/.env.example config > /dev/null
+                '''
+            }
+        }
+
+        stage('Test') {
+            steps {
+                sh '''
+                    set -e
+                    for dir in \
+                      services/api-gateway \
+                      services/auth-service \
+                      services/fleet-service \
+                      services/trip-service \
+                      services/booking-service \
+                      services/tracking-service \
+                      services/mock-gps-service \
+                      services/analytics-service \
+                      services/alert-service \
+                      services/optimization-service \
+                      frontend; do
+                      if [ -f "$dir/package.json" ]; then
+                        if npm --prefix "$dir" run | grep -qE ' test'; then
+                          echo "Running tests in $dir"
+                          npm --prefix "$dir" test -- --ci
+                        else
+                          echo "No test script in $dir, skipping"
+                        fi
+                      fi
+                    done
+
+                    python3 -m compileall services/ml-service/app
+                '''
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                sh 'bash scripts/build-images.sh "$IMAGE_REGISTRY" "$IMAGE_TAG"'
+            }
+        }
+
+        stage('Docker Push') {
+            when {
+                branch 'main'
+            }
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-creds',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )
+                ]) {
+                    sh '''
+                        set -e
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                        bash scripts/push-images.sh "$IMAGE_REGISTRY" "$IMAGE_TAG"
+                        docker logout
+                    '''
+                }
+            }
+        }
+
+        stage('Kubernetes Deploy') {
+            when {
+                branch 'main'
+            }
+            steps {
+                sh 'bash scripts/deploy-k8s.sh "$IMAGE_REGISTRY" "$IMAGE_TAG" "$K8S_NAMESPACE"'
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts artifacts: 'k8s/**/*.yaml,docker/docker-compose.yml,ci-cd/Jenkinsfile', allowEmptyArchive: true
+        }
+    }
+}

@@ -37,6 +37,30 @@ async function initDatabase() {
             )
         `);
 
+        // Keep cloud schema (capacity_tons) and legacy schema (capacity) compatible.
+        await client.query('ALTER TABLE trucks ADD COLUMN IF NOT EXISTS capacity NUMERIC(10,2)');
+        await client.query('ALTER TABLE trucks ADD COLUMN IF NOT EXISTS capacity_tons NUMERIC(10,2)');
+        await client.query('ALTER TABLE trucks ADD COLUMN IF NOT EXISTS mileage_kmpl NUMERIC(10,2) DEFAULT 4.5');
+        await client.query('ALTER TABLE trucks ADD COLUMN IF NOT EXISTS insurance_expiry DATE');
+        await client.query('ALTER TABLE trucks ADD COLUMN IF NOT EXISTS fitness_expiry DATE');
+        await client.query(`
+            UPDATE trucks
+            SET
+                capacity = COALESCE(capacity, capacity_tons, 0),
+                capacity_tons = COALESCE(capacity_tons, capacity, 0),
+                insurance_expiry = COALESCE(insurance_expiry, (CURRENT_DATE + INTERVAL '365 days')::date),
+                fitness_expiry = COALESCE(fitness_expiry, (CURRENT_DATE + INTERVAL '180 days')::date)
+        `);
+        await client.query(`
+            DO $$
+            BEGIN
+                ALTER TABLE trucks DROP CONSTRAINT IF EXISTS trucks_status_check;
+                ALTER TABLE trucks ADD CONSTRAINT trucks_status_check CHECK (LOWER(status) IN ('available', 'assigned', 'maintenance'));
+            EXCEPTION WHEN duplicate_object THEN
+                NULL;
+            END $$;
+        `);
+
         // Create drivers table
         await client.query(`
             CREATE TABLE IF NOT EXISTS drivers (
@@ -53,6 +77,23 @@ async function initDatabase() {
                 FOREIGN KEY (assigned_truck_id) REFERENCES trucks(truck_id) ON DELETE SET NULL,
                 FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL
             )
+        `);
+
+        await client.query('ALTER TABLE drivers ADD COLUMN IF NOT EXISTS user_id INTEGER UNIQUE');
+        await client.query('ALTER TABLE drivers ADD COLUMN IF NOT EXISTS license_expiry DATE');
+        await client.query('ALTER TABLE drivers ADD COLUMN IF NOT EXISTS assigned_truck_id INTEGER');
+        await client.query(`
+            UPDATE drivers
+            SET license_expiry = COALESCE(license_expiry, (CURRENT_DATE + INTERVAL '730 days')::date)
+        `);
+        await client.query(`
+            DO $$
+            BEGIN
+                ALTER TABLE drivers DROP CONSTRAINT IF EXISTS drivers_status_check;
+                ALTER TABLE drivers ADD CONSTRAINT drivers_status_check CHECK (LOWER(status) IN ('available', 'assigned', 'inactive'));
+            EXCEPTION WHEN duplicate_object THEN
+                NULL;
+            END $$;
         `);
 
         // Create trips table
@@ -73,6 +114,24 @@ async function initDatabase() {
                 FOREIGN KEY (truck_id) REFERENCES trucks(truck_id),
                 FOREIGN KEY (driver_id) REFERENCES drivers(driver_id)
             )
+        `);
+
+        await client.query('ALTER TABLE trips ADD COLUMN IF NOT EXISTS lr_number VARCHAR(50)');
+        await client.query('ALTER TABLE trips ADD COLUMN IF NOT EXISTS distance_km NUMERIC(10,2) DEFAULT 0');
+        await client.query('ALTER TABLE trips ADD COLUMN IF NOT EXISTS trip_distance NUMERIC(10,2) DEFAULT 0');
+        await client.query('ALTER TABLE trips ADD COLUMN IF NOT EXISTS start_time TIMESTAMP');
+        await client.query('ALTER TABLE trips ADD COLUMN IF NOT EXISTS end_time TIMESTAMP');
+        await client.query('ALTER TABLE trips ADD COLUMN IF NOT EXISTS planned_start_time TIMESTAMP');
+        await client.query('ALTER TABLE trips ADD COLUMN IF NOT EXISTS planned_end_time TIMESTAMP');
+
+        await client.query(`
+            DO $$
+            BEGIN
+                ALTER TABLE trips DROP CONSTRAINT IF EXISTS trips_status_check;
+                ALTER TABLE trips ADD CONSTRAINT trips_status_check CHECK (LOWER(status) IN ('planned', 'running', 'in_progress', 'completed', 'cancelled'));
+            EXCEPTION WHEN duplicate_object THEN
+                NULL;
+            END $$;
         `);
 
         await client.query('ALTER TABLE trips ADD COLUMN IF NOT EXISTS route_polyline TEXT');
@@ -142,10 +201,33 @@ async function initDatabase() {
             await client.query(`ALTER TABLE trips DROP COLUMN IF EXISTS ${col}`);
         }
 
-        // Auto-sync distance_km = empty_km + loaded_km
+        // Auto-sync distance columns for both legacy and microservice schema variants.
         await client.query(`
-            UPDATE trips SET distance_km = COALESCE(empty_km, 0) + COALESCE(loaded_km, 0)
-            WHERE distance_km IS DISTINCT FROM (COALESCE(empty_km, 0) + COALESCE(loaded_km, 0))
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trips' AND column_name='distance_km')
+                   AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trips' AND column_name='trip_distance') THEN
+                    UPDATE trips
+                    SET
+                        distance_km = COALESCE(distance_km, trip_distance, 0),
+                        trip_distance = COALESCE(trip_distance, distance_km, 0);
+
+                    UPDATE trips
+                    SET
+                        distance_km = COALESCE(empty_km, 0) + COALESCE(loaded_km, 0),
+                        trip_distance = COALESCE(empty_km, 0) + COALESCE(loaded_km, 0)
+                    WHERE distance_km IS DISTINCT FROM (COALESCE(empty_km, 0) + COALESCE(loaded_km, 0))
+                       OR trip_distance IS DISTINCT FROM (COALESCE(empty_km, 0) + COALESCE(loaded_km, 0));
+                ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trips' AND column_name='distance_km') THEN
+                    UPDATE trips
+                    SET distance_km = COALESCE(empty_km, 0) + COALESCE(loaded_km, 0)
+                    WHERE distance_km IS DISTINCT FROM (COALESCE(empty_km, 0) + COALESCE(loaded_km, 0));
+                ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trips' AND column_name='trip_distance') THEN
+                    UPDATE trips
+                    SET trip_distance = COALESCE(empty_km, 0) + COALESCE(loaded_km, 0)
+                    WHERE trip_distance IS DISTINCT FROM (COALESCE(empty_km, 0) + COALESCE(loaded_km, 0));
+                END IF;
+            END $$;
         `);
         console.log('  ✔ trips table columns ensured (billable columns removed, other_charges→fast_tag)');
 
@@ -166,6 +248,17 @@ async function initDatabase() {
         `);
         await client.query('ALTER TABLE gps_logs ADD COLUMN IF NOT EXISTS speed_kmph NUMERIC(10,2) DEFAULT 0');
         await client.query('ALTER TABLE gps_logs ADD COLUMN IF NOT EXISTS ignition BOOLEAN DEFAULT TRUE');
+        await client.query('ALTER TABLE gps_logs ADD COLUMN IF NOT EXISTS speed NUMERIC(10,2) DEFAULT 0');
+        await client.query('ALTER TABLE gps_logs ADD COLUMN IF NOT EXISTS timestamp TIMESTAMP DEFAULT NOW()');
+        await client.query('ALTER TABLE gps_logs ADD COLUMN IF NOT EXISTS recorded_at TIMESTAMP DEFAULT NOW()');
+        await client.query(`
+            UPDATE gps_logs
+            SET
+                speed = COALESCE(speed, speed_kmph, 0),
+                speed_kmph = COALESCE(speed_kmph, speed, 0),
+                timestamp = COALESCE(timestamp, recorded_at, NOW()),
+                recorded_at = COALESCE(recorded_at, timestamp, NOW())
+        `);
 
         // Create fuel_logs table
         await client.query(`
@@ -179,9 +272,13 @@ async function initDatabase() {
             )
         `);
         await client.query('ALTER TABLE fuel_logs ADD COLUMN IF NOT EXISTS truck_id INTEGER REFERENCES trucks(truck_id)');
+        await client.query('ALTER TABLE fuel_logs ADD COLUMN IF NOT EXISTS liters NUMERIC(10,2)');
+        await client.query('ALTER TABLE fuel_logs ADD COLUMN IF NOT EXISTS price_per_liter NUMERIC(10,2)');
+        await client.query('ALTER TABLE fuel_logs ADD COLUMN IF NOT EXISTS total_cost NUMERIC(12,2)');
         await client.query('ALTER TABLE fuel_logs ADD COLUMN IF NOT EXISTS fuel_filled NUMERIC(10,2)');
         await client.query('ALTER TABLE fuel_logs ADD COLUMN IF NOT EXISTS odometer_reading NUMERIC(12,2)');
         await client.query('ALTER TABLE fuel_logs ADD COLUMN IF NOT EXISTS timestamp TIMESTAMP DEFAULT NOW()');
+        await client.query('ALTER TABLE fuel_logs ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()');
         await client.query('UPDATE fuel_logs SET fuel_filled = COALESCE(fuel_filled, liters)');
         await client.query('UPDATE fuel_logs SET timestamp = COALESCE(timestamp, created_at, NOW())');
 
@@ -217,6 +314,8 @@ async function initDatabase() {
                 updated_at TIMESTAMP DEFAULT NOW()
             )
         `);
+        await client.query('ALTER TABLE booking_requests ADD COLUMN IF NOT EXISTS customer_name VARCHAR(120)');
+        await client.query("UPDATE booking_requests SET customer_name = COALESCE(customer_name, 'Walk-in Customer')");
 
         // Create operational alerts table
         await client.query(`

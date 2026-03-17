@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: alert-service
+  namespace: rks-logistics
+spec:
+  selector:
+    app: alert-service
+  ports:
+    - port: 3208
+      targetPort: 3208
+      protocol: TCP
+  type: ClusterIP

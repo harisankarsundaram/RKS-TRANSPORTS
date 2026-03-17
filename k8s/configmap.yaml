@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rks-shared-config
+  namespace: rks-logistics
+data:
+  AUTH_SERVICE_URL: http://auth-service:3201
+  FLEET_SERVICE_URL: http://fleet-service:3202
+  TRIP_SERVICE_URL: http://trip-service:3203
+  BOOKING_SERVICE_URL: http://booking-service:3204
+  TRACKING_SERVICE_URL: http://tracking-service:3205
+  MOCK_GPS_SERVICE_URL: http://mock-gps-service:3206
+  ANALYTICS_SERVICE_URL: http://analytics-service:3207
+  ALERT_SERVICE_URL: http://alert-service:3208
+  OPTIMIZATION_SERVICE_URL: http://optimization-service:3209
+  ML_SERVICE_URL: http://ml-service:8000
+
+  MOCK_GPS_TICK_MS: "5000"
+  GPS_ROUTE_PROVIDER: auto
+  GPS_ROUTE_ENGINE: openrouteservice
+
+  ANALYTICS_INTERVAL_MS: "120000"
+  OPTIMIZATION_INTERVAL_MS: "120000"

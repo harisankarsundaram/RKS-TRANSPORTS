@@ -52,13 +52,16 @@ export const AuthProvider = ({ children }) => {
 
             if (response.data.success) {
                 const { token, user } = response.data;
+                const normalizedUser = user?.user_id && !user?.id
+                    ? { ...user, id: user.user_id }
+                    : user;
 
                 localStorage.setItem('token', token);
-                localStorage.setItem('user', JSON.stringify(user));
+                localStorage.setItem('user', JSON.stringify(normalizedUser));
 
                 apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
                 setMicroserviceAuthToken(token);
-                setUser(user);
+                setUser(normalizedUser);
                 return { success: true };
             }
         } catch (error) {

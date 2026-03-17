@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: analytics-service
+  namespace: rks-logistics
+spec:
+  selector:
+    app: analytics-service
+  ports:
+    - port: 3207
+      targetPort: 3207
+      protocol: TCP
+  type: ClusterIP

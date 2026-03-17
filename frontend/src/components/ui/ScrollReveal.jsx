@@ -6,12 +6,13 @@ const ScrollReveal = ({ children, className = '', threshold = 0.1, animation = '
     const ref = useRef(null);
 
     useEffect(() => {
+        const element = ref.current;
         const observer = new IntersectionObserver(
             ([entry]) => {
                 if (entry.isIntersecting) {
                     setIsVisible(true);
                     // Once visible, we don't need to observe anymore if we want it to stay visible
-                    if (ref.current) observer.unobserve(ref.current);
+                    if (element) observer.unobserve(element);
                 }
             },
             {
@@ -20,13 +21,13 @@ const ScrollReveal = ({ children, className = '', threshold = 0.1, animation = '
             }
         );
 
-        if (ref.current) {
-            observer.observe(ref.current);
+        if (element) {
+            observer.observe(element);
         }
 
         return () => {
-            if (ref.current) {
-                observer.unobserve(ref.current);
+            if (element) {
+                observer.unobserve(element);
             }
         };
     }, [threshold]);

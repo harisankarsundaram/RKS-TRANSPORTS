@@ -290,6 +290,89 @@ app.get('/analytics/predictions', async (req, res) => {
     }
 });
 
+app.get('/analytics/fuel/anomalies', async (req, res) => {
+    const limit = Math.max(1, Math.min(500, Number(req.query.limit || 80)));
+
+    try {
+        const result = await pool.query(
+            `SELECT
+                f.trip_id,
+                COALESCE(NULLIF(f.distance_km, 0), COALESCE(t.trip_distance, 0), 0) AS distance_km,
+                COALESCE(NULLIF(f.mileage_kmpl, 0), NULLIF(tr.mileage_kmpl, 0), 4.5) AS mileage_kmpl,
+                COALESCE(NULLIF(f.actual_fuel, 0), NULLIF(f.liters, 0), NULLIF(f.fuel_filled, 0), 0) AS actual_fuel,
+                COALESCE(f.timestamp, f.created_at) AS observed_at
+             FROM fuel_logs f
+             LEFT JOIN trips t ON t.trip_id = f.trip_id
+             LEFT JOIN trucks tr ON tr.truck_id = COALESCE(f.truck_id, t.truck_id)
+             ORDER BY COALESCE(f.timestamp, f.created_at) DESC
+             LIMIT $1`,
+            [limit]
+        );
+
+        const anomalies = result.rows
+            .map((row) => {
+                const distance = Number(row.distance_km || 0);
+                const mileage = Number(row.mileage_kmpl || 0);
+                const actual = Number(row.actual_fuel || 0);
+                const expected = mileage > 0 ? distance / mileage : 0;
+                const variance = expected > 0 ? ((actual - expected) / expected) * 100 : 0;
+
+                return {
+                    trip_id: row.trip_id,
+                    expected_fuel: Number(expected.toFixed(2)),
+                    actual_fuel: Number(actual.toFixed(2)),
+                    variance_percent: Number(variance.toFixed(2)),
+                    observed_at: row.observed_at
+                };
+            })
+            .filter((item) => item.expected_fuel > 0 && item.actual_fuel > (item.expected_fuel * 1.1))
+            .sort((a, b) => b.variance_percent - a.variance_percent);
+
+        return res.json({ success: true, count: anomalies.length, data: anomalies });
+    } catch (error) {
+        if (error.code === '42P01') {
+            return res.json({ success: true, count: 0, data: [] });
+        }
+
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.get('/analytics/backhaul/suggestions', async (req, res) => {
+    const limit = Math.max(1, Math.min(500, Number(req.query.limit || 80)));
+
+    try {
+        const result = await pool.query(
+            `SELECT
+                o.truck_id,
+                o.booking_id,
+                o.distance_to_pickup_km,
+                o.score,
+                latest.trip_id
+             FROM optimization_suggestions o
+             LEFT JOIN LATERAL (
+                SELECT g.trip_id
+                FROM gps_logs g
+                WHERE g.truck_id = o.truck_id
+                ORDER BY g.timestamp DESC
+                LIMIT 1
+             ) latest ON TRUE
+             WHERE o.status = 'open'
+             ORDER BY o.score DESC, o.distance_to_pickup_km ASC, o.updated_at DESC
+             LIMIT $1`,
+            [limit]
+        );
+
+        return res.json({ success: true, count: result.rows.length, data: result.rows });
+    } catch (error) {
+        if (error.code === '42P01') {
+            return res.json({ success: true, count: 0, data: [] });
+        }
+
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 ensureSchema()
     .then(async () => {
         await runAnalyticsWorker().catch(() => null);

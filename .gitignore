@@ -14,3 +14,8 @@
 
 # Generated readiness artifacts
 backend/readiness-report.json
+legacy-monolith/backend/readiness-report.json
+
+# DevOps local runtime files
+docker/.env
+k8s/secret.yaml

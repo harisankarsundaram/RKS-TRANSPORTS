@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: booking-service
+  namespace: rks-logistics
+  labels:
+    app: booking-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: booking-service
+  template:
+    metadata:
+      labels:
+        app: booking-service
+    spec:
+      containers:
+        - name: booking-service
+          image: your-registry/rks-booking-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3204
+          envFrom:
+            - configMapRef:
+                name: rks-shared-config
+            - secretRef:
+                name: rks-shared-secrets
+          env:
+            - name: PORT
+              value: "3204"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rks-shared-secrets
+                  key: DATABASE_URL
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3204
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3204
+            initialDelaySeconds: 25
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: booking-service
+  namespace: rks-logistics
+spec:
+  type: ClusterIP
+  selector:
+    app: booking-service
+  ports:
+    - name: http
+      port: 3204
+      targetPort: 3204
+      protocol: TCP

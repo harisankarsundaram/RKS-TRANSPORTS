@@ -133,6 +133,11 @@ app.get('/tracking/live', async (req, res) => {
     }
 });
 
+// Compatibility no-op endpoint used by frontend fallback bootstrap calls.
+app.post('/tracking/bootstrap', async (req, res) => {
+    return res.json({ success: true, message: 'Tracking bootstrap acknowledged' });
+});
+
 app.get('/tracking/trip/:tripId', async (req, res) => {
     const tripId = Number(req.params.tripId);
     if (!Number.isFinite(tripId)) {

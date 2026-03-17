@@ -1,0 +1,219 @@
+services:
+  auth-service:
+    build:
+      context: ../services/auth-service
+      dockerfile: Dockerfile
+    container_name: rks-auth-service
+    restart: unless-stopped
+    environment:
+      PORT: 3201
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+    ports:
+      - "3201:3201"
+    networks:
+      - rks-network
+
+  fleet-service:
+    build:
+      context: ../services/fleet-service
+      dockerfile: Dockerfile
+    container_name: rks-fleet-service
+    restart: unless-stopped
+    environment:
+      PORT: 3202
+      DATABASE_URL: ${DATABASE_URL}
+    ports:
+      - "3202:3202"
+    networks:
+      - rks-network
+
+  trip-service:
+    build:
+      context: ../services/trip-service
+      dockerfile: Dockerfile
+    container_name: rks-trip-service
+    restart: unless-stopped
+    environment:
+      PORT: 3203
+      DATABASE_URL: ${DATABASE_URL}
+    ports:
+      - "3203:3203"
+    networks:
+      - rks-network
+
+  booking-service:
+    build:
+      context: ../services/booking-service
+      dockerfile: Dockerfile
+    container_name: rks-booking-service
+    restart: unless-stopped
+    environment:
+      PORT: 3204
+      DATABASE_URL: ${DATABASE_URL}
+      TRIP_SERVICE_URL: http://trip-service:3203
+    depends_on:
+      trip-service:
+        condition: service_started
+    ports:
+      - "3204:3204"
+    networks:
+      - rks-network
+
+  tracking-service:
+    build:
+      context: ../services/tracking-service
+      dockerfile: Dockerfile
+    container_name: rks-tracking-service
+    restart: unless-stopped
+    environment:
+      PORT: 3205
+      DATABASE_URL: ${DATABASE_URL}
+    ports:
+      - "3205:3205"
+    networks:
+      - rks-network
+
+  mock-gps-service:
+    build:
+      context: ../services/mock-gps-service
+      dockerfile: Dockerfile
+    container_name: rks-mock-gps-service
+    restart: unless-stopped
+    environment:
+      PORT: 3206
+      DATABASE_URL: ${DATABASE_URL}
+      MOCK_GPS_TICK_MS: ${MOCK_GPS_TICK_MS}
+      GPS_ROUTE_PROVIDER: ${GPS_ROUTE_PROVIDER}
+      GPS_ROUTE_ENGINE: ${GPS_ROUTE_ENGINE}
+      OPENROUTESERVICE_API_KEY: ${OPENROUTESERVICE_API_KEY}
+    ports:
+      - "3206:3206"
+    networks:
+      - rks-network
+
+  analytics-service:
+    build:
+      context: ../services/analytics-service
+      dockerfile: Dockerfile
+    container_name: rks-analytics-service
+    restart: unless-stopped
+    environment:
+      PORT: 3207
+      DATABASE_URL: ${DATABASE_URL}
+      ML_SERVICE_URL: http://ml-service:8000
+      ANALYTICS_INTERVAL_MS: ${ANALYTICS_INTERVAL_MS}
+    depends_on:
+      ml-service:
+        condition: service_started
+    ports:
+      - "3207:3207"
+    networks:
+      - rks-network
+
+  alert-service:
+    build:
+      context: ../services/alert-service
+      dockerfile: Dockerfile
+    container_name: rks-alert-service
+    restart: unless-stopped
+    environment:
+      PORT: 3208
+      DATABASE_URL: ${DATABASE_URL}
+      ML_SERVICE_URL: http://ml-service:8000
+    depends_on:
+      ml-service:
+        condition: service_started
+    ports:
+      - "3208:3208"
+    networks:
+      - rks-network
+
+  optimization-service:
+    build:
+      context: ../services/optimization-service
+      dockerfile: Dockerfile
+    container_name: rks-optimization-service
+    restart: unless-stopped
+    environment:
+      PORT: 3209
+      DATABASE_URL: ${DATABASE_URL}
+      OPTIMIZATION_INTERVAL_MS: ${OPTIMIZATION_INTERVAL_MS}
+    ports:
+      - "3209:3209"
+    networks:
+      - rks-network
+
+  ml-service:
+    build:
+      context: ../services/ml-service
+      dockerfile: Dockerfile
+    container_name: rks-ml-service
+    restart: unless-stopped
+    environment:
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "8000:8000"
+    networks:
+      - rks-network
+
+  api-gateway:
+    build:
+      context: ../services/api-gateway
+      dockerfile: Dockerfile
+    container_name: rks-api-gateway
+    restart: unless-stopped
+    environment:
+      PORT: 3200
+      AUTH_SERVICE_URL: http://auth-service:3201
+      FLEET_SERVICE_URL: http://fleet-service:3202
+      TRIP_SERVICE_URL: http://trip-service:3203
+      BOOKING_SERVICE_URL: http://booking-service:3204
+      TRACKING_SERVICE_URL: http://tracking-service:3205
+      MOCK_GPS_SERVICE_URL: http://mock-gps-service:3206
+      ANALYTICS_SERVICE_URL: http://analytics-service:3207
+      ALERT_SERVICE_URL: http://alert-service:3208
+      OPTIMIZATION_SERVICE_URL: http://optimization-service:3209
+      ML_SERVICE_URL: http://ml-service:8000
+    depends_on:
+      auth-service:
+        condition: service_started
+      fleet-service:
+        condition: service_started
+      trip-service:
+        condition: service_started
+      booking-service:
+        condition: service_started
+      tracking-service:
+        condition: service_started
+      mock-gps-service:
+        condition: service_started
+      analytics-service:
+        condition: service_started
+      alert-service:
+        condition: service_started
+      optimization-service:
+        condition: service_started
+      ml-service:
+        condition: service_started
+    ports:
+      - "3200:3200"
+    networks:
+      - rks-network
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: rks-frontend
+    restart: unless-stopped
+    depends_on:
+      - api-gateway
+    ports:
+      - "5173:80"
+    networks:
+      - rks-network
+
+networks:
+  rks-network:
+    name: rks-network

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import apiClient from '../api/client';
 import './Management.css';
@@ -34,12 +34,7 @@ function FuelTracking() {
         init();
     }, [user]);
 
-    useEffect(() => {
-        if (user?.role === 'driver' && !driverId) return;
-        fetchFuelLogs();
-    }, [driverId]);
-
-    const fetchFuelLogs = async () => {
+    const fetchFuelLogs = useCallback(async () => {
         setLoading(true);
         try {
             let url = '/fuel';
@@ -48,7 +43,12 @@ function FuelTracking() {
             if (res.data.success) setFuelLogs(res.data.data);
         } catch (error) { console.error(error); }
         finally { setLoading(false); }
-    };
+    }, [user?.role, driverId]);
+
+    useEffect(() => {
+        if (user?.role === 'driver' && !driverId) return;
+        fetchFuelLogs();
+    }, [driverId, user?.role, fetchFuelLogs]);
 
     const showMsg = (text, type = 'success') => {
         setMessage({ text, type });

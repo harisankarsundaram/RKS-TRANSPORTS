@@ -1,0 +1,46 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["prometheus:9090"]
+
+  - job_name: core-microservices
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - api-gateway:3200
+          - trip-service:3203
+          - tracking-service:3205
+          - ml-service:8000
+
+  - job_name: blackbox-http-health
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - http://api-gateway:3200/health
+          - http://auth-service:3201/health
+          - http://fleet-service:3202/health
+          - http://trip-service:3203/health
+          - http://booking-service:3204/health
+          - http://tracking-service:3205/health
+          - http://mock-gps-service:3206/health
+          - http://analytics-service:3207/health
+          - http://alert-service:3208/health
+          - http://optimization-service:3209/health
+          - http://ml-service:8000/health
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  - job_name: blackbox-exporter
+    static_configs:
+      - targets: ["blackbox-exporter:9115"]

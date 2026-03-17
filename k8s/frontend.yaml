@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rks-frontend
+  namespace: rks-logistics
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rks-frontend
+  template:
+    metadata:
+      labels:
+        app: rks-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: docker.io/USER_NAME/rks-frontend:TAG
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: rks-logistics
+spec:
+  selector:
+    app: rks-frontend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: LoadBalancer

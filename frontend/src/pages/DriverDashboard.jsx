@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import apiClient from '../api/client';
 import './Management.css';
@@ -72,7 +72,9 @@ function DriverDashboard() {
     const [message, setMessage] = useState({ text: '', type: '' });
     const [fuelForm, setFuelForm] = useState({ liters: '', price_per_liter: '' });
 
-    const fetchDashboard = async () => {
+    const normalizeTripStatus = (value) => String(value || '').toLowerCase();
+
+    const fetchDashboard = useCallback(async () => {
         const effectiveUserId = user?.id || user?.user_id;
         if (!effectiveUserId) { setLoading(false); return; }
 
@@ -89,9 +91,16 @@ function DriverDashboard() {
 
                 if (tripsRes.data.success) {
                     const allTrips = tripsRes.data.data;
-                    setCurrentTrip(allTrips.find(t => t.status === 'Running') || null);
-                    setPlannedTrip(allTrips.find(t => t.status === 'Planned') || null);
-                    setTripHistory(allTrips.filter(t => t.status === 'Completed').slice(0, 5));
+                    setCurrentTrip(allTrips.find((trip) => {
+                        const status = normalizeTripStatus(trip.status);
+                        return status === 'running' || status === 'in_progress';
+                    }) || null);
+                    setPlannedTrip(allTrips.find((trip) => normalizeTripStatus(trip.status) === 'planned') || null);
+                    setTripHistory(
+                        allTrips
+                            .filter((trip) => normalizeTripStatus(trip.status) === 'completed')
+                            .slice(0, 5)
+                    );
                 }
 
                 if (historyRes.data.success) {
@@ -106,9 +115,9 @@ function DriverDashboard() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [user]);
 
-    useEffect(() => { fetchDashboard(); }, [user]);
+    useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
 
     const fmt = (v) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v || 0);
     const num = (v) => new Intl.NumberFormat('en-IN').format(v || 0);

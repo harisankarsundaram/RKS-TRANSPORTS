@@ -20,7 +20,6 @@ const OPTIMIZATION_SERVICE_URL = process.env.OPTIMIZATION_SERVICE_URL || 'http:/
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
 
 app.use(cors());
-app.use(express.json());
 app.use(morgan('dev'));
 
 app.get('/health', (req, res) => {
@@ -31,14 +30,21 @@ app.get('/health', (req, res) => {
     });
 });
 
-function proxyRoute(basePath, target, rewriteMap) {
+function proxyRoute(basePath, target, rewritePrefix) {
     app.use(
         basePath,
         createProxyMiddleware({
             target,
             changeOrigin: true,
-            pathRewrite: rewriteMap,
+            pathRewrite: (path, req) => {
+                // req.url contains the path *after* Express strips basePath (e.g., "/login")
+                const subPath = req.url === '/' ? '' : req.url;
+                const newPath = rewritePrefix.replace(/\/$/, '') + subPath;
+                console.log(`[Proxy] ${req.method} ${req.originalUrl} -> ${target}${newPath}`);
+                return newPath;
+            },
             onError(error, req, res) {
+                console.error(`[Proxy Error] ${req.method} ${req.originalUrl} -> ${target}:`, error.message);
                 res.status(502).json({
                     success: false,
                     message: `Gateway proxy error for ${basePath}`,
@@ -49,16 +55,52 @@ function proxyRoute(basePath, target, rewriteMap) {
     );
 }
 
-proxyRoute('/api/auth', AUTH_SERVICE_URL, { '^/api/auth': '/auth' });
-proxyRoute('/api/fleet', FLEET_SERVICE_URL, { '^/api/fleet': '' });
-proxyRoute('/api/trips', TRIP_SERVICE_URL, { '^/api/trips': '/trips' });
-proxyRoute('/api/bookings', BOOKING_SERVICE_URL, { '^/api/bookings': '/booking' });
-proxyRoute('/api/tracking', TRACKING_SERVICE_URL, { '^/api/tracking': '/tracking' });
-proxyRoute('/api/mock-gps', MOCK_GPS_SERVICE_URL, { '^/api/mock-gps': '/mock-gps' });
-proxyRoute('/api/analytics', ANALYTICS_SERVICE_URL, { '^/api/analytics': '/analytics' });
-proxyRoute('/api/alerts', ALERT_SERVICE_URL, { '^/api/alerts': '/alerts' });
-proxyRoute('/api/optimization', OPTIMIZATION_SERVICE_URL, { '^/api/optimization': '/optimization' });
-proxyRoute('/api/ml', ML_SERVICE_URL, { '^/api/ml': '' });
+// === Auth Service Routes ===
+proxyRoute('/api/auth', AUTH_SERVICE_URL, '/auth');
+proxyRoute('/api/notifications', AUTH_SERVICE_URL, '/notifications');
+
+// === Fleet Service Routes (trucks, drivers, maintenance) ===
+proxyRoute('/api/fleet', FLEET_SERVICE_URL, '');
+proxyRoute('/api/trucks', FLEET_SERVICE_URL, '/trucks');
+proxyRoute('/api/drivers', FLEET_SERVICE_URL, '/drivers');
+proxyRoute('/api/maintenance', FLEET_SERVICE_URL, '/maintenance');
+
+// === Trip Service Routes (trips, expenses, invoices) ===
+proxyRoute('/api/trips', TRIP_SERVICE_URL, '/trips');
+proxyRoute('/api/expenses', TRIP_SERVICE_URL, '/expenses');
+proxyRoute('/api/invoices', TRIP_SERVICE_URL, '/invoices');
+
+// === Fuel Routes → Alert Service ===
+proxyRoute('/api/fuel', ALERT_SERVICE_URL, '/fuel');
+
+// === Booking Service Routes ===
+proxyRoute('/api/bookings', BOOKING_SERVICE_URL, '/bookings');
+proxyRoute('/api/booking', BOOKING_SERVICE_URL, '/booking');
+
+// === Tracking Service Routes ===
+proxyRoute('/api/tracking', TRACKING_SERVICE_URL, '/tracking');
+
+// === Mock GPS Service Routes ===
+proxyRoute('/api/mock-gps', MOCK_GPS_SERVICE_URL, '/mock-gps');
+
+// === Analytics Service Routes ===
+proxyRoute('/api/analytics', ANALYTICS_SERVICE_URL, '/analytics');
+
+// === Alert Service Routes ===
+proxyRoute('/api/alerts', ALERT_SERVICE_URL, '/alerts');
+
+// === Intelligence (fallback aggregation routes) ===
+proxyRoute('/api/intelligence/bookings', BOOKING_SERVICE_URL, '/bookings');
+proxyRoute('/api/intelligence/fuel/anomalies', ALERT_SERVICE_URL, '/alerts/fuel-anomalies');
+proxyRoute('/api/intelligence/fuel', ALERT_SERVICE_URL, '/alerts/fuel-anomalies');
+proxyRoute('/api/intelligence/backhaul', OPTIMIZATION_SERVICE_URL, '/optimization');
+proxyRoute('/api/intelligence/alerts', ALERT_SERVICE_URL, '/alerts');
+
+// === Optimization Service Routes ===
+proxyRoute('/api/optimization', OPTIMIZATION_SERVICE_URL, '/optimization');
+
+// === ML Service Routes ===
+proxyRoute('/api/ml', ML_SERVICE_URL, '');
 
 app.use((req, res) => {
     res.status(404).json({
