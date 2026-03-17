@@ -5,7 +5,7 @@ The pipeline file is located at `ci-cd/Jenkinsfile`.
 ## Trigger
 
 - `githubPush()` webhook trigger
-- Deploy stages run only when branch is `main`
+- Pipeline stages run when branch is `main` or `devops`
 
 ## Stages
 
@@ -14,8 +14,8 @@ The pipeline file is located at `ci-cd/Jenkinsfile`.
 3. Install Dependencies
 4. Test
 5. Docker Build
-6. Docker Push (main only)
-7. Deploy to Kubernetes (main only)
+6. Docker Push (main/devops)
+7. Deploy to Kubernetes (main/devops)
 
 ## Jenkins prerequisites
 

@@ -18,12 +18,24 @@ pipeline {
 
     stages {
         stage('Checkout') {
+            when {
+                anyOf {
+                    branch 'main'
+                    branch 'devops'
+                }
+            }
             steps {
                 checkout scm
             }
         }
 
         stage('Build') {
+            when {
+                anyOf {
+                    branch 'main'
+                    branch 'devops'
+                }
+            }
             steps {
                 sh '''
                     set -e
@@ -53,6 +65,12 @@ pipeline {
         }
 
         stage('Test') {
+            when {
+                anyOf {
+                    branch 'main'
+                    branch 'devops'
+                }
+            }
             steps {
                 sh '''
                     set -e
@@ -84,6 +102,12 @@ pipeline {
         }
 
         stage('Docker Build') {
+            when {
+                anyOf {
+                    branch 'main'
+                    branch 'devops'
+                }
+            }
             steps {
                 sh 'bash scripts/build-images.sh "$IMAGE_REGISTRY" "$IMAGE_TAG"'
             }
@@ -91,7 +115,10 @@ pipeline {
 
         stage('Docker Push') {
             when {
-                branch 'main'
+                anyOf {
+                    branch 'main'
+                    branch 'devops'
+                }
             }
             steps {
                 withCredentials([
@@ -113,7 +140,10 @@ pipeline {
 
         stage('Kubernetes Deploy') {
             when {
-                branch 'main'
+                anyOf {
+                    branch 'main'
+                    branch 'devops'
+                }
             }
             steps {
                 sh 'bash scripts/deploy-k8s.sh "$IMAGE_REGISTRY" "$IMAGE_TAG" "$K8S_NAMESPACE"'
