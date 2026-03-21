@@ -17,28 +17,27 @@ pipeline {
     }
 
     stages {
+
         stage('Checkout') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'devops'
-                }
-            }
             steps {
-                checkout scm
+                echo " Cleaning workspace..."
+                deleteDir()
+
+                echo " Cloning repository..."
+                git branch: 'devops',
+                    url: 'https://github.com/harisankarsundaram/RKS-TRANSPORTS.git'
+
+                echo "Listing files..."
+                sh 'ls -R'
             }
         }
 
         stage('Build') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'devops'
-                }
-            }
             steps {
                 sh '''
                     set -e
+                    echo " Installing dependencies..."
+
                     for dir in \
                       services/api-gateway \
                       services/auth-service \
@@ -57,23 +56,22 @@ pipeline {
                       fi
                     done
 
+                    echo " Installing Python dependencies..."
                     python3 -m pip install --upgrade pip
                     python3 -m pip install -r services/ml-service/requirements.txt
+
+                    echo " Validating Docker Compose..."
                     docker compose -f docker/docker-compose.yml --env-file docker/.env.example config > /dev/null
                 '''
             }
         }
 
         stage('Test') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'devops'
-                }
-            }
             steps {
                 sh '''
                     set -e
+                    echo " Running tests..."
+
                     for dir in \
                       services/api-gateway \
                       services/auth-service \
@@ -96,30 +94,22 @@ pipeline {
                       fi
                     done
 
+                    echo " Checking Python syntax..."
                     python3 -m compileall services/ml-service/app
                 '''
             }
         }
 
         stage('Docker Build') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'devops'
-                }
-            }
             steps {
-                sh 'bash scripts/build-images.sh "$IMAGE_REGISTRY" "$IMAGE_TAG"'
+                sh '''
+                    echo " Building Docker images..."
+                    bash scripts/build-images.sh "$IMAGE_REGISTRY" "$IMAGE_TAG"
+                '''
             }
         }
 
         stage('Docker Push') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'devops'
-                }
-            }
             steps {
                 withCredentials([
                     usernamePassword(
@@ -130,8 +120,12 @@ pipeline {
                 ]) {
                     sh '''
                         set -e
+                        echo " Logging into Docker Hub..."
                         echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+
+                        echo "Pushing images..."
                         bash scripts/push-images.sh "$IMAGE_REGISTRY" "$IMAGE_TAG"
+
                         docker logout
                     '''
                 }
@@ -139,20 +133,18 @@ pipeline {
         }
 
         stage('Kubernetes Deploy') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'devops'
-                }
-            }
             steps {
-                sh 'bash scripts/deploy-k8s.sh "$IMAGE_REGISTRY" "$IMAGE_TAG" "$K8S_NAMESPACE"'
+                sh '''
+                    echo " Deploying to Kubernetes..."
+                    bash scripts/deploy-k8s.sh "$IMAGE_REGISTRY" "$IMAGE_TAG" "$K8S_NAMESPACE"
+                '''
             }
         }
     }
 
     post {
         always {
+            echo "Archiving artifacts..."
             archiveArtifacts artifacts: 'k8s/**/*.yaml,docker/docker-compose.yml,ci-cd/Jenkinsfile', allowEmptyArchive: true
         }
     }
