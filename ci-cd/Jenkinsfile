@@ -10,7 +10,7 @@ pipeline {
     }
 
     environment {
-        IMAGE_REGISTRY = 'docker.io/your-username'
+        IMAGE_REGISTRY = 'docker.io/harisankarsundaram'
         IMAGE_TAG = "${env.BUILD_NUMBER}"
         K8S_NAMESPACE = 'rks-logistics'
     }
