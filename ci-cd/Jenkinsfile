@@ -19,18 +19,10 @@ pipeline {
     stages {
 
         stage('Checkout') {
-            steps {
-                echo " Cleaning workspace..."
-                deleteDir()
-
-                echo " Cloning repository..."
-                git branch: 'devops',
-                    url: 'https://github.com/harisankarsundaram/RKS-TRANSPORTS.git'
-
-                echo "Listing files..."
-                sh 'ls -R'
-            }
-        }
+    steps {
+        git branch: 'devops', url: 'https://github.com/harisankarsundaram/RKS-TRANSPORTS.git'
+    }
+}
 
         stage('Build') {
             steps {
