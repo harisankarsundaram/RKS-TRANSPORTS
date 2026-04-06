@@ -18,10 +18,10 @@ pipeline {
     stages {
 
         stage('Checkout') {
-    steps {
-        git branch: 'devops', url: 'https://github.com/harisankarsundaram/RKS-TRANSPORTS.git'
-    }
-}
+            steps {
+                git branch: 'devops', url: 'https://github.com/harisankarsundaram/RKS-TRANSPORTS.git'
+            }
+        }
 
         stage('Build') {
             steps {
@@ -118,6 +118,24 @@ pipeline {
                         bash scripts/push-images.sh "$IMAGE_REGISTRY" "$IMAGE_TAG"
 
                         docker logout
+                    '''
+                }
+            }
+        }
+
+        // ✅ NEW FIX STAGE (VERY IMPORTANT)
+        stage('Apply Kubernetes Secret') {
+            steps {
+                withCredentials([
+                    string(credentialsId: 'db-url', variable: 'DATABASE_URL')
+                ]) {
+                    sh '''
+                        echo " Applying correct DATABASE_URL secret..."
+
+                        kubectl create secret generic rks-shared-secrets \
+                          --from-literal=DATABASE_URL="$DATABASE_URL" \
+                          -n $K8S_NAMESPACE \
+                          --dry-run=client -o yaml | kubectl apply -f -
                     '''
                 }
             }
