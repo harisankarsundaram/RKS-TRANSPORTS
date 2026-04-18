@@ -3,7 +3,6 @@ pipeline {
 
     options {
         timestamps()
-        ansiColor('xterm')
     }
 
     triggers {
@@ -11,34 +10,25 @@ pipeline {
     }
 
     environment {
-        IMAGE_REGISTRY = 'docker.io/your-username'
+        IMAGE_REGISTRY = 'docker.io/harisankarsundaram'
         IMAGE_TAG = "${env.BUILD_NUMBER}"
         K8S_NAMESPACE = 'rks-logistics'
     }
 
     stages {
+
         stage('Checkout') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'devops'
-                }
-            }
             steps {
-                checkout scm
+                git branch: 'devops', url: 'https://github.com/harisankarsundaram/RKS-TRANSPORTS.git'
             }
         }
 
         stage('Build') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'devops'
-                }
-            }
             steps {
                 sh '''
                     set -e
+                    echo " Installing dependencies..."
+
                     for dir in \
                       services/api-gateway \
                       services/auth-service \
@@ -53,27 +43,26 @@ pipeline {
                       frontend; do
                       if [ -f "$dir/package.json" ]; then
                         echo "Installing npm dependencies in $dir"
-                        (cd "$dir" && npm ci)
+                        (cd "$dir" && npm install)
                       fi
                     done
 
+                    echo " Installing Python dependencies..."
                     python3 -m pip install --upgrade pip
                     python3 -m pip install -r services/ml-service/requirements.txt
+
+                    echo " Validating Docker Compose..."
                     docker compose -f docker/docker-compose.yml --env-file docker/.env.example config > /dev/null
                 '''
             }
         }
 
         stage('Test') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'devops'
-                }
-            }
             steps {
                 sh '''
                     set -e
+                    echo " Running tests..."
+
                     for dir in \
                       services/api-gateway \
                       services/auth-service \
@@ -96,30 +85,22 @@ pipeline {
                       fi
                     done
 
+                    echo " Checking Python syntax..."
                     python3 -m compileall services/ml-service/app
                 '''
             }
         }
 
         stage('Docker Build') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'devops'
-                }
-            }
             steps {
-                sh 'bash scripts/build-images.sh "$IMAGE_REGISTRY" "$IMAGE_TAG"'
+                sh '''
+                    echo " Building Docker images..."
+                    bash scripts/build-images.sh "$IMAGE_REGISTRY" "$IMAGE_TAG"
+                '''
             }
         }
 
         stage('Docker Push') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'devops'
-                }
-            }
             steps {
                 withCredentials([
                     usernamePassword(
@@ -130,29 +111,49 @@ pipeline {
                 ]) {
                     sh '''
                         set -e
+                        echo " Logging into Docker Hub..."
                         echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+
+                        echo "Pushing images..."
                         bash scripts/push-images.sh "$IMAGE_REGISTRY" "$IMAGE_TAG"
+
                         docker logout
                     '''
                 }
             }
         }
 
-        stage('Kubernetes Deploy') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'devops'
+        // ✅ NEW FIX STAGE (VERY IMPORTANT)
+        stage('Apply Kubernetes Secret') {
+            steps {
+                withCredentials([
+                    string(credentialsId: 'db-url', variable: 'DATABASE_URL')
+                ]) {
+                    sh '''
+                        echo " Applying correct DATABASE_URL secret..."
+
+                        kubectl create secret generic rks-shared-secrets \
+                          --from-literal=DATABASE_URL="$DATABASE_URL" \
+                          -n $K8S_NAMESPACE \
+                          --dry-run=client -o yaml | kubectl apply -f -
+                    '''
                 }
             }
+        }
+
+        stage('Kubernetes Deploy') {
             steps {
-                sh 'bash scripts/deploy-k8s.sh "$IMAGE_REGISTRY" "$IMAGE_TAG" "$K8S_NAMESPACE"'
+                sh '''
+                    echo " Deploying to Kubernetes..."
+                    bash scripts/deploy-k8s.sh "$IMAGE_REGISTRY" "$IMAGE_TAG" "$K8S_NAMESPACE"
+                '''
             }
         }
     }
 
     post {
         always {
+            echo "Archiving artifacts..."
             archiveArtifacts artifacts: 'k8s/**/*.yaml,docker/docker-compose.yml,ci-cd/Jenkinsfile', allowEmptyArchive: true
         }
     }
