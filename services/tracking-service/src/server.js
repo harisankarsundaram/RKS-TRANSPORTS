@@ -40,6 +40,48 @@ function sumDistance(points) {
     return total;
 }
 
+function parseRoutePolyline(rawPolyline) {
+    if (!rawPolyline) {
+        return [];
+    }
+
+    try {
+        const parsed = typeof rawPolyline === 'string' ? JSON.parse(rawPolyline) : rawPolyline;
+        if (!Array.isArray(parsed)) {
+            return [];
+        }
+
+        return parsed
+            .map((point) => {
+                if (Array.isArray(point) && point.length >= 2) {
+                    return {
+                        latitude: Number(point[1]),
+                        longitude: Number(point[0])
+                    };
+                }
+
+                if (point && point.latitude !== undefined && point.longitude !== undefined) {
+                    return {
+                        latitude: Number(point.latitude),
+                        longitude: Number(point.longitude)
+                    };
+                }
+
+                if (point && point.lat !== undefined && point.lng !== undefined) {
+                    return {
+                        latitude: Number(point.lat),
+                        longitude: Number(point.lng)
+                    };
+                }
+
+                return null;
+            })
+            .filter((point) => point && Number.isFinite(point.latitude) && Number.isFinite(point.longitude));
+    } catch {
+        return [];
+    }
+}
+
 async function ensureSchema() {
     await pool.query(`
         CREATE TABLE IF NOT EXISTS gps_logs (
@@ -146,7 +188,7 @@ app.get('/tracking/trip/:tripId', async (req, res) => {
 
     try {
         const tripResult = await pool.query(
-            `SELECT trip_id, truck_id, source, destination, status, trip_distance
+            `SELECT trip_id, truck_id, source, destination, status, trip_distance, route_polyline
              FROM trips
              WHERE trip_id = $1`,
             [tripId]
@@ -158,8 +200,9 @@ app.get('/tracking/trip/:tripId', async (req, res) => {
 
         const trip = tripResult.rows[0];
         const path = await getTripPath(tripId);
+        const plannedRoute = parseRoutePolyline(trip.route_polyline);
         const travelled = sumDistance(path);
-        const totalDistance = Number(trip.trip_distance || 0);
+        const totalDistance = Number(trip.trip_distance || sumDistance(plannedRoute) || 0);
         const progress = totalDistance > 0 ? Math.min(travelled / totalDistance, 1) : 0;
 
         return res.json({
@@ -171,7 +214,9 @@ app.get('/tracking/trip/:tripId', async (req, res) => {
                 destination: trip.destination,
                 status: trip.status,
                 gps_logs: path,
-                route: path.map((point) => ({ latitude: point.latitude, longitude: point.longitude })),
+                route: plannedRoute.length > 1
+                    ? plannedRoute
+                    : path.map((point) => ({ latitude: point.latitude, longitude: point.longitude })),
                 distance_travelled_km: Number(travelled.toFixed(3)),
                 total_route_distance_km: Number(totalDistance.toFixed(3)),
                 progress: Number(progress.toFixed(4)),
