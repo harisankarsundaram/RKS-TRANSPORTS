@@ -201,9 +201,13 @@ pipeline {
                                         # switch to Minikube container IP:8443 and skip TLS verification for local-dev CI.
                                         if ! kubectl --request-timeout=5s get --raw='/readyz' >/dev/null 2>&1; then
                                             echo "Primary Kubernetes endpoint not reachable; trying Minikube container endpoint..."
-                                            minikube_ip="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' rks 2>/dev/null || true)"
+
+                                            # Docker may expose address in either .IPAddress or .IPAMConfig.IPv4Address.
+                                            raw_ips="$(docker inspect rks --format '{{range $name, $net := .NetworkSettings.Networks}}{{if $net.IPAddress}}{{$net.IPAddress}} {{end}}{{if $net.IPAMConfig}}{{$net.IPAMConfig.IPv4Address}} {{end}}{{end}}' 2>/dev/null || true)"
+                                            minikube_ip="$(echo "$raw_ips" | tr ' ' '\n' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)"
+
                                             if [ -z "$minikube_ip" ]; then
-                                                echo "Could not resolve Minikube container IP for 'rks'."
+                                                echo "Could not resolve valid Minikube container IPv4 for 'rks'. Raw values: '$raw_ips'"
                                                 exit 1
                                             fi
 
