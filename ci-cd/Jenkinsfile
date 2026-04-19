@@ -182,6 +182,18 @@ pipeline {
                 sh '''
                     set -e
                     echo "Preparing Kubernetes access for Jenkins container..."
+
+                                        if ! docker inspect rks >/dev/null 2>&1; then
+                                            echo "Minikube Docker container 'rks' not found."
+                                            exit 1
+                                        fi
+
+                                        if [ "$(docker inspect -f '{{.State.Running}}' rks 2>/dev/null || echo false)" != "true" ]; then
+                                            echo "Minikube container 'rks' is stopped. Starting it..."
+                                            docker start rks >/dev/null
+                                            sleep 8
+                                        fi
+
                     if [ ! -f /root/.kube/config ]; then
                       echo "Missing /root/.kube/config in Jenkins container"
                       exit 1
