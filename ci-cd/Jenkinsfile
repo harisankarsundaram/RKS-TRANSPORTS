@@ -82,11 +82,9 @@ pipeline {
                       fi
                     done
 
-                                        echo "Installing Python dependencies in virtual environment..."
-                                        python3 -m venv .jenkins-venv
-                                        . .jenkins-venv/bin/activate
-                                        python -m pip install --upgrade pip
-                                        python -m pip install -r services/ml-service/requirements.txt
+                                        echo "Installing Python dependencies..."
+                                        python3 -m pip install --break-system-packages --upgrade pip
+                                        python3 -m pip install --break-system-packages -r services/ml-service/requirements.txt
 
                                         echo "Validating Docker Compose..."
                                         if [ -f docker/.env ]; then
