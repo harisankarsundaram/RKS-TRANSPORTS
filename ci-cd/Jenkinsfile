@@ -17,6 +17,7 @@ pipeline {
         DOCKER_CREDENTIALS_ID = 'dockerhub-creds'
         EFFECTIVE_BRANCH = "${env.BRANCH_NAME ?: 'devops'}"
         KUBECONFIG = "${env.WORKSPACE}/.jenkins-kubeconfig"
+        KUBE_FALLBACK_MARKER = "${env.WORKSPACE}/.kube-via-rks"
     }
 
     stages {
@@ -182,6 +183,7 @@ pipeline {
                 sh '''
                     set -e
                     echo "Preparing Kubernetes access for Jenkins container..."
+                    rm -f "$KUBE_FALLBACK_MARKER"
 
                                         if ! docker inspect rks >/dev/null 2>&1; then
                                             echo "Minikube Docker container 'rks' not found."
@@ -246,9 +248,15 @@ pipeline {
                                             fi
 
                                             if ! kubectl --request-timeout=10s get --raw='/readyz' >/dev/null 2>&1; then
-                                                echo "Kubernetes API is still unreachable after endpoint fallbacks."
-                                                kubectl config view --minify
-                                                exit 1
+                                                echo "Kubernetes API is still unreachable after endpoint fallbacks. Trying in-container kubectl mode..."
+                                                if docker exec rks kubectl --request-timeout=10s get --raw='/readyz' >/dev/null 2>&1; then
+                                                    echo "Using in-container kubectl mode via 'docker exec rks kubectl'."
+                                                    touch "$KUBE_FALLBACK_MARKER"
+                                                else
+                                                    echo "In-container kubectl mode also failed."
+                                                    kubectl config view --minify
+                                                    exit 1
+                                                fi
                                             fi
                                         fi
 
@@ -262,7 +270,13 @@ pipeline {
                       echo "k8s/secret.yaml not found. Falling back to k8s/secret.example.yaml"
                       secret_manifest="k8s/secret.example.yaml"
                     fi
-                                        kubectl apply --validate=false -f "$secret_manifest"
+
+                                        if [ -f "$KUBE_FALLBACK_MARKER" ]; then
+                                            echo "Applying secret via in-container kubectl mode"
+                                            cat "$secret_manifest" | docker exec -i rks kubectl apply --validate=false -f -
+                                        else
+                                            kubectl apply --validate=false -f "$secret_manifest"
+                                        fi
                 '''
             }
         }
@@ -276,7 +290,48 @@ pipeline {
             steps {
                 sh '''
                     echo "Deploying to Kubernetes..."
-                    bash scripts/deploy-k8s.sh "$IMAGE_REGISTRY" "$IMAGE_TAG" "$K8S_NAMESPACE"
+                                        if [ -f "$KUBE_FALLBACK_MARKER" ]; then
+                                            echo "Deploying via in-container kubectl mode"
+                                            docker cp k8s/. rks:/tmp/rks-k8s
+                                            docker exec rks kubectl apply -k /tmp/rks-k8s
+
+                                            for spec in \
+                                                "deployment/api-gateway api-gateway=${IMAGE_REGISTRY}/rks-api-gateway:${IMAGE_TAG}" \
+                                                "deployment/auth-service auth-service=${IMAGE_REGISTRY}/rks-auth-service:${IMAGE_TAG}" \
+                                                "deployment/fleet-service fleet-service=${IMAGE_REGISTRY}/rks-fleet-service:${IMAGE_TAG}" \
+                                                "deployment/trip-service trip-service=${IMAGE_REGISTRY}/rks-trip-service:${IMAGE_TAG}" \
+                                                "deployment/booking-service booking-service=${IMAGE_REGISTRY}/rks-booking-service:${IMAGE_TAG}" \
+                                                "deployment/tracking-service tracking-service=${IMAGE_REGISTRY}/rks-tracking-service:${IMAGE_TAG}" \
+                                                "deployment/mock-gps-service mock-gps-service=${IMAGE_REGISTRY}/rks-mock-gps-service:${IMAGE_TAG}" \
+                                                "deployment/analytics-service analytics-service=${IMAGE_REGISTRY}/rks-analytics-service:${IMAGE_TAG}" \
+                                                "deployment/alert-service alert-service=${IMAGE_REGISTRY}/rks-alert-service:${IMAGE_TAG}" \
+                                                "deployment/optimization-service optimization-service=${IMAGE_REGISTRY}/rks-optimization-service:${IMAGE_TAG}" \
+                                                "deployment/ml-service ml-service=${IMAGE_REGISTRY}/rks-ml-service:${IMAGE_TAG}" \
+                                                "deployment/rks-frontend frontend=${IMAGE_REGISTRY}/rks-frontend:${IMAGE_TAG}"; do
+                                                docker exec rks kubectl -n "$K8S_NAMESPACE" set image $spec
+                                            done
+
+                                            for deployment in \
+                                                api-gateway \
+                                                auth-service \
+                                                fleet-service \
+                                                trip-service \
+                                                booking-service \
+                                                tracking-service \
+                                                mock-gps-service \
+                                                analytics-service \
+                                                alert-service \
+                                                optimization-service \
+                                                ml-service \
+                                                rks-frontend \
+                                                prometheus \
+                                                blackbox-exporter \
+                                                grafana; do
+                                                docker exec rks kubectl -n "$K8S_NAMESPACE" rollout status "deployment/${deployment}" --timeout=180s
+                                            done
+                                        else
+                                            bash scripts/deploy-k8s.sh "$IMAGE_REGISTRY" "$IMAGE_TAG" "$K8S_NAMESPACE"
+                                        fi
                 '''
             }
         }
@@ -291,8 +346,13 @@ pipeline {
                 sh '''
                     set -e
                     echo "Checking monitoring resources"
-                    kubectl -n "$K8S_NAMESPACE" get deploy prometheus grafana blackbox-exporter
-                    kubectl -n "$K8S_NAMESPACE" get svc prometheus grafana blackbox-exporter
+                                        if [ -f "$KUBE_FALLBACK_MARKER" ]; then
+                                            docker exec rks kubectl -n "$K8S_NAMESPACE" get deploy prometheus grafana blackbox-exporter
+                                            docker exec rks kubectl -n "$K8S_NAMESPACE" get svc prometheus grafana blackbox-exporter
+                                        else
+                                            kubectl -n "$K8S_NAMESPACE" get deploy prometheus grafana blackbox-exporter
+                                            kubectl -n "$K8S_NAMESPACE" get svc prometheus grafana blackbox-exporter
+                                        fi
                 '''
             }
         }
