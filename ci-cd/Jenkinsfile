@@ -10,18 +10,12 @@ pipeline {
         githubPush()
     }
 
-    parameters {
-        booleanParam(name: 'PUSH_IMAGES', defaultValue: false, description: 'Push Docker images to registry (requires Jenkins Docker credentials).')
-        booleanParam(name: 'DEPLOY_K8S', defaultValue: false, description: 'Deploy to Kubernetes after image build/push.')
-        string(name: 'DOCKER_CREDENTIALS_ID', defaultValue: 'dockerhub-creds', description: 'Jenkins Username/Password credentials ID for Docker registry login.')
-        string(name: 'GIT_BRANCH', defaultValue: '', description: 'Optional override branch name for manual runs.')
-    }
-
     environment {
         IMAGE_REGISTRY = 'docker.io/harisankarsundaram'
         IMAGE_TAG = "${env.BUILD_NUMBER}"
         K8S_NAMESPACE = 'rks-logistics'
-        EFFECTIVE_BRANCH = "${params.GIT_BRANCH ?: env.BRANCH_NAME ?: 'unknown'}"
+        DOCKER_CREDENTIALS_ID = 'dockerhub-creds'
+        EFFECTIVE_BRANCH = "${env.BRANCH_NAME ?: 'devops'}"
         KUBECONFIG = "${env.WORKSPACE}/.jenkins-kubeconfig"
     }
 
@@ -48,8 +42,8 @@ pipeline {
         stage('Validate Parameters') {
             steps {
                 script {
-                    if (params.DEPLOY_K8S && !params.PUSH_IMAGES) {
-                        error('DEPLOY_K8S=true requires PUSH_IMAGES=true so Kubernetes can pull the new image tag.')
+                    if (env.EFFECTIVE_BRANCH == 'devops') {
+                        echo 'Default behavior enabled: Docker push and Kubernetes deploy will run for devops branch.'
                     }
                 }
             }
@@ -153,18 +147,13 @@ pipeline {
         stage('Docker Push') {
             when {
                 expression {
-                    return params.PUSH_IMAGES
+                    return env.EFFECTIVE_BRANCH == 'devops'
                 }
             }
             steps {
-                script {
-                    if (!params.DOCKER_CREDENTIALS_ID?.trim()) {
-                        error('DOCKER_CREDENTIALS_ID parameter is empty while PUSH_IMAGES=true.')
-                    }
-                }
                 withCredentials([
                     usernamePassword(
-                        credentialsId: "${params.DOCKER_CREDENTIALS_ID}",
+                        credentialsId: "${env.DOCKER_CREDENTIALS_ID}",
                         usernameVariable: 'DOCKER_USER',
                         passwordVariable: 'DOCKER_PASS'
                     )
@@ -186,7 +175,7 @@ pipeline {
         stage('Apply Kubernetes Secret') {
             when {
                 expression {
-                    return params.DEPLOY_K8S
+                    return env.EFFECTIVE_BRANCH == 'devops'
                 }
             }
             steps {
@@ -222,7 +211,7 @@ pipeline {
         stage('Kubernetes Deploy') {
             when {
                 expression {
-                    return params.DEPLOY_K8S
+                    return env.EFFECTIVE_BRANCH == 'devops'
                 }
             }
             steps {
@@ -236,7 +225,7 @@ pipeline {
         stage('Verify Monitoring') {
             when {
                 expression {
-                    return params.DEPLOY_K8S
+                    return env.EFFECTIVE_BRANCH == 'devops'
                 }
             }
             steps {
