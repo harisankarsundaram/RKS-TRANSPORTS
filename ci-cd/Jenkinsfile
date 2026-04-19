@@ -197,6 +197,26 @@ pipeline {
                     sed -i 's#https://127.0.0.1:#https://host.docker.internal:#g' "$KUBECONFIG"
                     sed -i 's#https://localhost:#https://host.docker.internal:#g' "$KUBECONFIG"
 
+                                        # If host.docker.internal endpoint is not reachable from Jenkins container,
+                                        # switch to Minikube container IP:8443 and skip TLS verification for local-dev CI.
+                                        if ! kubectl --request-timeout=5s get --raw='/readyz' >/dev/null 2>&1; then
+                                            echo "Primary Kubernetes endpoint not reachable; trying Minikube container endpoint..."
+                                            minikube_ip="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' rks 2>/dev/null || true)"
+                                            if [ -z "$minikube_ip" ]; then
+                                                echo "Could not resolve Minikube container IP for 'rks'."
+                                                exit 1
+                                            fi
+
+                                            current_context="$(kubectl config current-context)"
+                                            cluster_name="$(kubectl config view -o jsonpath="{.contexts[?(@.name=='$current_context')].context.cluster}")"
+                                            if [ -z "$cluster_name" ]; then
+                                                echo "Could not resolve cluster name from current context: $current_context"
+                                                exit 1
+                                            fi
+
+                                            kubectl config set-cluster "$cluster_name" --server="https://$minikube_ip:8443" --insecure-skip-tls-verify=true >/dev/null
+                                        fi
+
                     kubectl config get-contexts >/dev/null
                 '''
                 sh '''
@@ -207,7 +227,7 @@ pipeline {
                       echo "k8s/secret.yaml not found. Falling back to k8s/secret.example.yaml"
                       secret_manifest="k8s/secret.example.yaml"
                     fi
-                    kubectl apply -f "$secret_manifest"
+                                        kubectl apply --validate=false -f "$secret_manifest"
                 '''
             }
         }
