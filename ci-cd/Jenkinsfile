@@ -204,7 +204,7 @@ pipeline {
 
                                             # Docker may expose address in either .IPAddress or .IPAMConfig.IPv4Address.
                                             raw_ips="$(docker inspect rks --format '{{range $name, $net := .NetworkSettings.Networks}}{{if $net.IPAddress}}{{$net.IPAddress}} {{end}}{{if $net.IPAMConfig}}{{$net.IPAMConfig.IPv4Address}} {{end}}{{end}}' 2>/dev/null || true)"
-                                            minikube_ip="$(echo "$raw_ips" | tr ' ' '\n' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)"
+                                              minikube_ip="$(echo "$raw_ips" | tr ' ' '\n' | grep -E '^[0-9]+[.][0-9]+[.][0-9]+[.][0-9]+$' | head -n 1 || true)"
 
                                             if [ -z "$minikube_ip" ]; then
                                                 echo "Could not resolve valid Minikube container IPv4 for 'rks'. Raw values: '$raw_ips'"
