@@ -8,14 +8,28 @@ NAMESPACE="${3:-rks-logistics}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 K8S_DIR="${ROOT_DIR}/k8s"
 SECRET_FILE="${K8S_DIR}/secret.yaml"
+SECRET_EXAMPLE_FILE="${K8S_DIR}/secret.example.yaml"
+WORK_K8S_DIR="$(mktemp -d)"
+
+cleanup() {
+  rm -rf "${WORK_K8S_DIR}"
+}
+trap cleanup EXIT
+
+cp -R "${K8S_DIR}/." "${WORK_K8S_DIR}/"
 
 if [[ ! -f "${SECRET_FILE}" ]]; then
-  echo "Error: ${SECRET_FILE} not found. Create it from k8s/secret.example.yaml before deploying."
-  exit 1
+  if [[ -f "${SECRET_EXAMPLE_FILE}" ]]; then
+    echo "${SECRET_FILE} not found. Falling back to ${SECRET_EXAMPLE_FILE} for deployment."
+    cp "${WORK_K8S_DIR}/secret.example.yaml" "${WORK_K8S_DIR}/secret.yaml"
+  else
+    echo "Error: ${SECRET_FILE} not found and ${SECRET_EXAMPLE_FILE} is also missing."
+    exit 1
+  fi
 fi
 
 echo "Applying Kubernetes stack via kustomize (app + monitoring)"
-kubectl apply -k "${K8S_DIR}"
+kubectl apply -k "${WORK_K8S_DIR}"
 
 echo "Updating deployment images"
 kubectl -n "${NAMESPACE}" set image deployment/api-gateway api-gateway="${REGISTRY}/rks-api-gateway:${TAG}"
