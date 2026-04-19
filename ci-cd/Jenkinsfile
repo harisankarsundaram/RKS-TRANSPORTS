@@ -18,6 +18,7 @@ pipeline {
         EFFECTIVE_BRANCH = "${env.BRANCH_NAME ?: 'devops'}"
         KUBECONFIG = "${env.WORKSPACE}/.jenkins-kubeconfig"
         KUBE_FALLBACK_MARKER = "${env.WORKSPACE}/.kube-via-rks"
+        RKS_KUBECTL_PATH_FILE = "${env.WORKSPACE}/.rks-kubectl-path"
     }
 
     stages {
@@ -184,6 +185,7 @@ pipeline {
                     set -e
                     echo "Preparing Kubernetes access for Jenkins container..."
                     rm -f "$KUBE_FALLBACK_MARKER"
+                    rm -f "$RKS_KUBECTL_PATH_FILE"
 
                                         if ! docker inspect rks >/dev/null 2>&1; then
                                             echo "Minikube Docker container 'rks' not found."
@@ -194,6 +196,12 @@ pipeline {
                                             echo "Minikube container 'rks' is stopped. Starting it..."
                                             docker start rks >/dev/null
                                             sleep 8
+                                        fi
+
+                                        if [ "$(docker exec rks systemctl is-active kubelet 2>/dev/null || true)" != "active" ]; then
+                                            echo "kubelet is not active in 'rks'. Starting kubelet..."
+                                            docker exec rks systemctl start kubelet >/dev/null
+                                            sleep 10
                                         fi
 
                     if [ ! -f /root/.kube/config ]; then
@@ -249,9 +257,16 @@ pipeline {
 
                                             if ! kubectl --request-timeout=10s get --raw='/readyz' >/dev/null 2>&1; then
                                                 echo "Kubernetes API is still unreachable after endpoint fallbacks. Trying in-container kubectl mode..."
-                                                if docker exec rks kubectl --request-timeout=10s get --raw='/readyz' >/dev/null 2>&1; then
+                                                rks_kubectl="$(docker exec rks sh -lc 'command -v kubectl 2>/dev/null || find /var/lib/minikube/binaries -maxdepth 4 -type f -name kubectl 2>/dev/null | head -n 1' | tr -d '\r')"
+                                                if [ -z "$rks_kubectl" ]; then
+                                                    echo "Could not locate kubectl binary inside 'rks' container."
+                                                    exit 1
+                                                fi
+
+                                                if docker exec rks "$rks_kubectl" --kubeconfig /var/lib/minikube/kubeconfig --request-timeout=10s get --raw=/readyz >/dev/null 2>&1; then
                                                     echo "Using in-container kubectl mode via 'docker exec rks kubectl'."
                                                     touch "$KUBE_FALLBACK_MARKER"
+                                                    echo "$rks_kubectl" > "$RKS_KUBECTL_PATH_FILE"
                                                 else
                                                     echo "In-container kubectl mode also failed."
                                                     kubectl config view --minify
@@ -273,7 +288,11 @@ pipeline {
 
                                         if [ -f "$KUBE_FALLBACK_MARKER" ]; then
                                             echo "Applying secret via in-container kubectl mode"
-                                            cat "$secret_manifest" | docker exec -i rks kubectl apply --validate=false -f -
+                                            rks_kubectl="$(cat "$RKS_KUBECTL_PATH_FILE" 2>/dev/null || true)"
+                                            if [ -z "$rks_kubectl" ]; then
+                                                rks_kubectl="$(docker exec rks sh -lc 'command -v kubectl 2>/dev/null || find /var/lib/minikube/binaries -maxdepth 4 -type f -name kubectl 2>/dev/null | head -n 1' | tr -d '\r')"
+                                            fi
+                                            cat "$secret_manifest" | docker exec -i rks "$rks_kubectl" --kubeconfig /var/lib/minikube/kubeconfig apply --validate=false -f -
                                         else
                                             kubectl apply --validate=false -f "$secret_manifest"
                                         fi
@@ -292,8 +311,12 @@ pipeline {
                     echo "Deploying to Kubernetes..."
                                         if [ -f "$KUBE_FALLBACK_MARKER" ]; then
                                             echo "Deploying via in-container kubectl mode"
+                                            rks_kubectl="$(cat "$RKS_KUBECTL_PATH_FILE" 2>/dev/null || true)"
+                                            if [ -z "$rks_kubectl" ]; then
+                                                rks_kubectl="$(docker exec rks sh -lc 'command -v kubectl 2>/dev/null || find /var/lib/minikube/binaries -maxdepth 4 -type f -name kubectl 2>/dev/null | head -n 1' | tr -d '\r')"
+                                            fi
                                             docker cp k8s/. rks:/tmp/rks-k8s
-                                            docker exec rks kubectl apply -k /tmp/rks-k8s
+                                            docker exec rks "$rks_kubectl" --kubeconfig /var/lib/minikube/kubeconfig apply -k /tmp/rks-k8s
 
                                             for spec in \
                                                 "deployment/api-gateway api-gateway=${IMAGE_REGISTRY}/rks-api-gateway:${IMAGE_TAG}" \
@@ -308,7 +331,7 @@ pipeline {
                                                 "deployment/optimization-service optimization-service=${IMAGE_REGISTRY}/rks-optimization-service:${IMAGE_TAG}" \
                                                 "deployment/ml-service ml-service=${IMAGE_REGISTRY}/rks-ml-service:${IMAGE_TAG}" \
                                                 "deployment/rks-frontend frontend=${IMAGE_REGISTRY}/rks-frontend:${IMAGE_TAG}"; do
-                                                docker exec rks kubectl -n "$K8S_NAMESPACE" set image $spec
+                                                docker exec rks "$rks_kubectl" --kubeconfig /var/lib/minikube/kubeconfig -n "$K8S_NAMESPACE" set image $spec
                                             done
 
                                             for deployment in \
@@ -327,7 +350,7 @@ pipeline {
                                                 prometheus \
                                                 blackbox-exporter \
                                                 grafana; do
-                                                docker exec rks kubectl -n "$K8S_NAMESPACE" rollout status "deployment/${deployment}" --timeout=180s
+                                                docker exec rks "$rks_kubectl" --kubeconfig /var/lib/minikube/kubeconfig -n "$K8S_NAMESPACE" rollout status "deployment/${deployment}" --timeout=180s
                                             done
                                         else
                                             bash scripts/deploy-k8s.sh "$IMAGE_REGISTRY" "$IMAGE_TAG" "$K8S_NAMESPACE"
@@ -347,8 +370,12 @@ pipeline {
                     set -e
                     echo "Checking monitoring resources"
                                         if [ -f "$KUBE_FALLBACK_MARKER" ]; then
-                                            docker exec rks kubectl -n "$K8S_NAMESPACE" get deploy prometheus grafana blackbox-exporter
-                                            docker exec rks kubectl -n "$K8S_NAMESPACE" get svc prometheus grafana blackbox-exporter
+                                            rks_kubectl="$(cat "$RKS_KUBECTL_PATH_FILE" 2>/dev/null || true)"
+                                            if [ -z "$rks_kubectl" ]; then
+                                                rks_kubectl="$(docker exec rks sh -lc 'command -v kubectl 2>/dev/null || find /var/lib/minikube/binaries -maxdepth 4 -type f -name kubectl 2>/dev/null | head -n 1' | tr -d '\r')"
+                                            fi
+                                            docker exec rks "$rks_kubectl" --kubeconfig /var/lib/minikube/kubeconfig -n "$K8S_NAMESPACE" get deploy prometheus grafana blackbox-exporter
+                                            docker exec rks "$rks_kubectl" --kubeconfig /var/lib/minikube/kubeconfig -n "$K8S_NAMESPACE" get svc prometheus grafana blackbox-exporter
                                         else
                                             kubectl -n "$K8S_NAMESPACE" get deploy prometheus grafana blackbox-exporter
                                             kubectl -n "$K8S_NAMESPACE" get svc prometheus grafana blackbox-exporter
