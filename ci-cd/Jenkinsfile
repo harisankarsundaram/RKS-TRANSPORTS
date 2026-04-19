@@ -22,6 +22,7 @@ pipeline {
         IMAGE_TAG = "${env.BUILD_NUMBER}"
         K8S_NAMESPACE = 'rks-logistics'
         EFFECTIVE_BRANCH = "${params.GIT_BRANCH ?: env.BRANCH_NAME ?: 'unknown'}"
+        KUBECONFIG = "${env.WORKSPACE}/.jenkins-kubeconfig"
     }
 
     stages {
@@ -189,6 +190,22 @@ pipeline {
                 }
             }
             steps {
+                sh '''
+                    set -e
+                    echo "Preparing Kubernetes access for Jenkins container..."
+                    if [ ! -f /root/.kube/config ]; then
+                      echo "Missing /root/.kube/config in Jenkins container"
+                      exit 1
+                    fi
+
+                    cp /root/.kube/config "$KUBECONFIG"
+
+                    # Convert Windows-style kubeconfig paths to Linux paths used inside container.
+                    sed -i 's#C:\\\\Users\\\\[^\\\\]*\\\\.minikube#/root/.minikube#g' "$KUBECONFIG"
+                    sed -i 's#\\\\#/#g' "$KUBECONFIG"
+
+                    kubectl config get-contexts >/dev/null
+                '''
                 sh '''
                     set -e
                     echo "Applying Kubernetes secret manifest..."
