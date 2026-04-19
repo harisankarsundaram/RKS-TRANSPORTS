@@ -193,6 +193,10 @@ pipeline {
                     sed -i 's#C:\\\\Users\\\\[^\\\\]*\\\\.minikube#/root/.minikube#g' "$KUBECONFIG"
                     sed -i 's#\\\\#/#g' "$KUBECONFIG"
 
+                    # Minikube on Windows often exposes API server on localhost; inside container use host.docker.internal.
+                    sed -i 's#https://127.0.0.1:#https://host.docker.internal:#g' "$KUBECONFIG"
+                    sed -i 's#https://localhost:#https://host.docker.internal:#g' "$KUBECONFIG"
+
                     kubectl config get-contexts >/dev/null
                 '''
                 sh '''
