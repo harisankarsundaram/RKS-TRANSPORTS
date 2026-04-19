@@ -3,7 +3,10 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - configmap.yaml
-  - secret.example.yaml
+  - secret.yaml
+  - monitoring.yaml
+  - deployments/postgres-pvc.yaml
+  - deployments/postgres-deployment.yaml
   - deployments/auth-service-deployment.yaml
   - deployments/fleet-service-deployment.yaml
   - deployments/trip-service-deployment.yaml
@@ -15,6 +18,8 @@ resources:
   - deployments/optimization-service-deployment.yaml
   - deployments/ml-service-deployment.yaml
   - deployments/api-gateway-deployment.yaml
+  - deployments/frontend-deployment.yaml
+  - services/postgres-service.yaml
   - services/auth-service-service.yaml
   - services/fleet-service-service.yaml
   - services/trip-service-service.yaml
@@ -26,4 +31,5 @@ resources:
   - services/optimization-service-service.yaml
   - services/ml-service-service.yaml
   - services/api-gateway-service.yaml
+  - services/frontend-service.yaml
   - ingress/api-gateway-ingress.yaml

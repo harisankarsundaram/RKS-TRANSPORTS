@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rks-frontend
+  namespace: rks-logistics
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rks-frontend
+  template:
+    metadata:
+      labels:
+        app: rks-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: rks-frontend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

@@ -3,23 +3,54 @@ pipeline {
 
     options {
         timestamps()
+        disableConcurrentBuilds()
     }
 
     triggers {
         githubPush()
     }
 
+    parameters {
+        booleanParam(name: 'PUSH_IMAGES', defaultValue: false, description: 'Push Docker images to registry (requires Jenkins Docker credentials).')
+        booleanParam(name: 'DEPLOY_K8S', defaultValue: false, description: 'Deploy to Kubernetes after image build/push.')
+        string(name: 'DOCKER_CREDENTIALS_ID', defaultValue: 'dockerhub-creds', description: 'Jenkins Username/Password credentials ID for Docker registry login.')
+        string(name: 'GIT_BRANCH', defaultValue: '', description: 'Optional override branch name for manual runs.')
+    }
+
     environment {
         IMAGE_REGISTRY = 'docker.io/harisankarsundaram'
         IMAGE_TAG = "${env.BUILD_NUMBER}"
         K8S_NAMESPACE = 'rks-logistics'
+        EFFECTIVE_BRANCH = "${params.GIT_BRANCH ?: env.BRANCH_NAME ?: 'unknown'}"
     }
 
     stages {
 
         stage('Checkout') {
             steps {
-                git branch: 'devops', url: 'https://github.com/harisankarsundaram/RKS-TRANSPORTS.git'
+                checkout scm
+            }
+        }
+
+        stage('Validate Toolchain') {
+            steps {
+                sh '''
+                    set -e
+                    echo "Validating required tools on Jenkins agent"
+                    command -v docker >/dev/null
+                    command -v python3 >/dev/null
+                    command -v npm >/dev/null
+                '''
+            }
+        }
+
+        stage('Validate Parameters') {
+            steps {
+                script {
+                    if (params.DEPLOY_K8S && !params.PUSH_IMAGES) {
+                        error('DEPLOY_K8S=true requires PUSH_IMAGES=true so Kubernetes can pull the new image tag.')
+                    }
+                }
             }
         }
 
@@ -27,7 +58,7 @@ pipeline {
             steps {
                 sh '''
                     set -e
-                    echo " Installing dependencies..."
+                    echo "Installing dependencies..."
 
                     for dir in \
                       services/api-gateway \
@@ -42,17 +73,25 @@ pipeline {
                       services/optimization-service \
                       frontend; do
                       if [ -f "$dir/package.json" ]; then
-                        echo "Installing npm dependencies in $dir"
-                        (cd "$dir" && npm install)
+                                                echo "Installing npm dependencies in $dir"
+                                                if [ -f "$dir/package-lock.json" ]; then
+                                                    (cd "$dir" && npm ci)
+                                                else
+                                                    (cd "$dir" && npm install)
+                                                fi
                       fi
                     done
 
-                    echo " Installing Python dependencies..."
+                                        echo "Installing Python dependencies..."
                     python3 -m pip install --upgrade pip
                     python3 -m pip install -r services/ml-service/requirements.txt
 
-                    echo " Validating Docker Compose..."
-                    docker compose -f docker/docker-compose.yml --env-file docker/.env.example config > /dev/null
+                                        echo "Validating Docker Compose..."
+                                        if [ -f docker/.env ]; then
+                                            docker compose -f docker/docker-compose.yml --env-file docker/.env config > /dev/null
+                                        else
+                                            docker compose -f docker/docker-compose.yml --env-file docker/.env.example config > /dev/null
+                                        fi
                 '''
             }
         }
@@ -85,7 +124,7 @@ pipeline {
                       fi
                     done
 
-                    echo " Checking Python syntax..."
+                    echo "Checking Python syntax..."
                     python3 -m compileall services/ml-service/app
                 '''
             }
@@ -94,24 +133,34 @@ pipeline {
         stage('Docker Build') {
             steps {
                 sh '''
-                    echo " Building Docker images..."
+                    echo "Building Docker images..."
                     bash scripts/build-images.sh "$IMAGE_REGISTRY" "$IMAGE_TAG"
                 '''
             }
         }
 
         stage('Docker Push') {
+            when {
+                expression {
+                    return params.PUSH_IMAGES
+                }
+            }
             steps {
+                script {
+                    if (!params.DOCKER_CREDENTIALS_ID?.trim()) {
+                        error('DOCKER_CREDENTIALS_ID parameter is empty while PUSH_IMAGES=true.')
+                    }
+                }
                 withCredentials([
                     usernamePassword(
-                        credentialsId: 'dockerhub-creds',
+                        credentialsId: "${params.DOCKER_CREDENTIALS_ID}",
                         usernameVariable: 'DOCKER_USER',
                         passwordVariable: 'DOCKER_PASS'
                     )
                 ]) {
                     sh '''
                         set -e
-                        echo " Logging into Docker Hub..."
+                        echo "Logging into Docker registry..."
                         echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
 
                         echo "Pushing images..."
@@ -123,29 +172,47 @@ pipeline {
             }
         }
 
-        // ✅ NEW FIX STAGE (VERY IMPORTANT)
         stage('Apply Kubernetes Secret') {
-            steps {
-                withCredentials([
-                    string(credentialsId: 'db-url', variable: 'DATABASE_URL')
-                ]) {
-                    sh '''
-                        echo " Applying correct DATABASE_URL secret..."
-
-                        kubectl create secret generic rks-shared-secrets \
-                          --from-literal=DATABASE_URL="$DATABASE_URL" \
-                          -n $K8S_NAMESPACE \
-                          --dry-run=client -o yaml | kubectl apply -f -
-                    '''
+            when {
+                expression {
+                    return params.DEPLOY_K8S
                 }
+            }
+            steps {
+                sh '''
+                    set -e
+                    echo "Applying Kubernetes secret manifest..."
+                    kubectl apply -f k8s/secret.yaml
+                '''
             }
         }
 
         stage('Kubernetes Deploy') {
+            when {
+                expression {
+                    return params.DEPLOY_K8S
+                }
+            }
             steps {
                 sh '''
-                    echo " Deploying to Kubernetes..."
+                    echo "Deploying to Kubernetes..."
                     bash scripts/deploy-k8s.sh "$IMAGE_REGISTRY" "$IMAGE_TAG" "$K8S_NAMESPACE"
+                '''
+            }
+        }
+
+        stage('Verify Monitoring') {
+            when {
+                expression {
+                    return params.DEPLOY_K8S
+                }
+            }
+            steps {
+                sh '''
+                    set -e
+                    echo "Checking monitoring resources"
+                    kubectl -n "$K8S_NAMESPACE" get deploy prometheus grafana blackbox-exporter
+                    kubectl -n "$K8S_NAMESPACE" get svc prometheus grafana blackbox-exporter
                 '''
             }
         }
@@ -155,6 +222,12 @@ pipeline {
         always {
             echo "Archiving artifacts..."
             archiveArtifacts artifacts: 'k8s/**/*.yaml,docker/docker-compose.yml,ci-cd/Jenkinsfile', allowEmptyArchive: true
+        }
+        success {
+            echo "Pipeline completed successfully for branch: ${env.EFFECTIVE_BRANCH}"
+        }
+        failure {
+            echo "Pipeline failed. Check stage logs for details."
         }
     }
 }

@@ -16,13 +16,24 @@ spec:
       containers:
         - name: postgres
           image: postgres:16
+          imagePullPolicy: IfNotPresent
+          args:
+            - "-p"
+            - "7519"
           ports:
-            - containerPort: 5432
+            - containerPort: 7519
           envFrom:
             - configMapRef:
                 name: rks-shared-config
             - secretRef:
                 name: rks-shared-secrets
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
           volumeMounts:
             - name: postgres-storage
               mountPath: /var/lib/postgresql/data

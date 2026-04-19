@@ -4,7 +4,7 @@ metadata:
   name: api-gateway
   namespace: rks-logistics
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: api-gateway
@@ -15,7 +15,8 @@ spec:
     spec:
       containers:
         - name: api-gateway
-          image: DOCKERHUB_USERNAME/rks-api-gateway:latest
+          image: rks-api-gateway:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3200
           envFrom:

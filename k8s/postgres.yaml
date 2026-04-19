@@ -30,8 +30,11 @@ spec:
       containers:
         - name: postgres
           image: postgres:16
+          args:
+            - "-p"
+            - "7519"
           ports:
-            - containerPort: 5432
+            - containerPort: 7519
           envFrom:
             - configMapRef:
                 name: rks-shared-config
@@ -53,6 +56,13 @@ spec:
                 secretKeyRef:
                   name: rks-shared-secrets
                   key: POSTGRES_PASSWORD
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
           volumeMounts:
             - name: postgres-storage
               mountPath: /var/lib/postgresql/data
@@ -61,7 +71,7 @@ spec:
               command:
                 - sh
                 - -c
-                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+                - pg_isready -h 127.0.0.1 -p 7519 -U "$POSTGRES_USER" -d "$POSTGRES_DB"
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 5
@@ -80,7 +90,7 @@ spec:
   selector:
     app: postgres
   ports:
-    - port: 5432
-      targetPort: 5432
+    - port: 7519
+      targetPort: 7519
       protocol: TCP
       name: postgres

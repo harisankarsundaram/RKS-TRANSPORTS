@@ -4,7 +4,7 @@ metadata:
   name: trip-service
   namespace: rks-logistics
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: trip-service
@@ -15,7 +15,8 @@ spec:
     spec:
       containers:
         - name: trip-service
-          image: DOCKERHUB_USERNAME/rks-trip-service:latest
+          image: rks-trip-service:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3203
           envFrom:

@@ -6,13 +6,20 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-    - host: logistics.example.com
+    - host: myapp.local
       http:
         paths:
-          - path: /
+          - path: /api
             pathType: Prefix
             backend:
               service:
                 name: api-gateway
+                port:
+                  number: 80
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
                 port:
                   number: 80

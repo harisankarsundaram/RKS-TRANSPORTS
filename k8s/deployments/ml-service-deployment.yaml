@@ -4,7 +4,7 @@ metadata:
   name: ml-service
   namespace: rks-logistics
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: ml-service
@@ -15,7 +15,8 @@ spec:
     spec:
       containers:
         - name: ml-service
-          image: DOCKERHUB_USERNAME/rks-ml-service:latest
+          image: rks-ml-service:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
           env:

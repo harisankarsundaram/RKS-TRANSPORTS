@@ -4,7 +4,7 @@ metadata:
   name: tracking-service
   namespace: rks-logistics
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: tracking-service
@@ -15,7 +15,8 @@ spec:
     spec:
       containers:
         - name: tracking-service
-          image: DOCKERHUB_USERNAME/rks-tracking-service:latest
+          image: rks-tracking-service:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3205
           envFrom:

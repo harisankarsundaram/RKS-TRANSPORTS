@@ -1,32 +1,31 @@
-name: DevOps CI Pipeline
+name: DevOps Validation + Jenkins Trigger
 
 on:
   push:
-    branches:
-      - devops
+    branches: [ main, devops ]
   pull_request:
-    branches:
-      - devops
+    branches: [ main, devops ]
 
 jobs:
-  build-and-push:
+  validate:
     runs-on: ubuntu-latest
-
-    env:
-      IMAGE_REGISTRY: docker.io/harisankarsundaram
-      IMAGE_TAG: ${{ github.run_number }}
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: |
+            frontend/package-lock.json
+            services/**/package-lock.json
 
       - name: Install Dependencies
         run: |
+          set -e
           echo "Installing dependencies..."
 
           for dir in \
@@ -43,32 +42,81 @@ jobs:
             frontend; do
             if [ -f "$dir/package.json" ]; then
               echo "Installing in $dir"
-              cd $dir && npm install && cd -
+              if [ -f "$dir/package-lock.json" ]; then
+                (cd "$dir" && npm ci)
+              else
+                (cd "$dir" && npm install)
+              fi
             fi
           done
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
       - name: Install Python Dependencies
         run: |
+          set -e
           pip install --upgrade pip
           pip install -r services/ml-service/requirements.txt
 
-      - name: Docker Login
-        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
-
-      - name: Build Docker Images
+      - name: Run Tests
         run: |
-          echo "Building Docker images..."
-          bash scripts/build-images.sh "$IMAGE_REGISTRY" "$IMAGE_TAG"
+          set -e
+          for dir in \
+            services/api-gateway \
+            services/auth-service \
+            services/fleet-service \
+            services/trip-service \
+            services/booking-service \
+            services/tracking-service \
+            services/mock-gps-service \
+            services/analytics-service \
+            services/alert-service \
+            services/optimization-service \
+            frontend; do
+            if [ -f "$dir/package.json" ]; then
+              if npm --prefix "$dir" run | grep -qE ' test'; then
+                echo "Running tests in $dir"
+                npm --prefix "$dir" test -- --ci
+              else
+                echo "No test script in $dir, skipping"
+              fi
+            fi
+          done
+          python3 -m compileall services/ml-service/app
 
-      - name: Push Docker Images
+      - name: Validate Docker Compose
         run: |
-          echo "Pushing Docker images..."
-          bash scripts/push-images.sh "$IMAGE_REGISTRY" "$IMAGE_TAG"
+          set -e
+          if [ -f docker/.env ]; then
+            docker compose -f docker/docker-compose.yml --env-file docker/.env config > /dev/null
+          else
+            docker compose -f docker/docker-compose.yml --env-file docker/.env.example config > /dev/null
+          fi
 
-      - name: Docker Logout
-        run: docker logout
+  trigger-jenkins:
+    needs: validate
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/devops')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Jenkins Webhook
+        env:
+          JENKINS_WEBHOOK_URL: ${{ secrets.JENKINS_WEBHOOK_URL }}
+        run: |
+          set -e
+          if [ -z "$JENKINS_WEBHOOK_URL" ]; then
+            echo "JENKINS_WEBHOOK_URL secret is not configured. Skipping Jenkins trigger."
+            exit 0
+          fi
+
+          curl -sS -X POST "$JENKINS_WEBHOOK_URL"
+          echo "Jenkins trigger sent successfully"
+
+      - name: Print Next Jenkins Settings
+        run: |
+          echo "In Jenkins, configure pipeline parameters for release runs:"
+          echo "- PUSH_IMAGES=true"
+          echo "- DEPLOY_K8S=true"
+          echo "- DOCKER_CREDENTIALS_ID=dockerhub-creds"

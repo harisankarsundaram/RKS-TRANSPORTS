@@ -4,7 +4,7 @@ metadata:
   name: alert-service
   namespace: rks-logistics
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: alert-service
@@ -15,7 +15,8 @@ spec:
     spec:
       containers:
         - name: alert-service
-          image: DOCKERHUB_USERNAME/rks-alert-service:latest
+          image: rks-alert-service:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3208
           envFrom:

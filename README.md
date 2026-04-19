@@ -41,23 +41,27 @@ This repository is organized for CI/CD and Kubernetes deployment while preservin
    - kubectl apply -k k8s
 3. Quick check:
    - kubectl -n rks-logistics port-forward svc/api-gateway 3200:80
+4. Monitoring check:
+   - Grafana NodePort: http://<node-ip>:30300
+   - Prometheus NodePort: http://<node-ip>:30990
 
 ## Jenkins Pipeline Stages
 
-- Build
+- Checkout
+- Build (dependencies + compose validation)
 - Test
 - Docker Build
 - Docker Push
+- Apply Kubernetes Secret
 - Kubernetes Deploy
 
 ## Monitoring
 
-Prometheus configuration includes direct scrape targets for:
+Prometheus + Blackbox + Grafana are integrated in both local Docker and Kubernetes:
 
-- api-gateway
-- trip-service
-- tracking-service
-- ml-service
+- Local stack: `monitoring/docker-compose.monitoring.yml`
+- K8s stack: `k8s/monitoring.yaml` (automatically applied via kustomize)
+- Pre-provisioned Grafana dashboard: `RKS Logistics Observability`
 
 ## Workflow Outcome
 
@@ -66,6 +70,9 @@ Developer push to GitHub
 -> Jenkins builds/tests and creates images
 -> Images are pushed to registry
 -> Kubernetes deploys updated services
+-> Kubernetes deploys monitoring stack (Prometheus, Blackbox, Grafana)
+-> Prometheus probes service health continuously
+-> Grafana visualizes uptime and probe latency
 -> Public ingress route exposes the application
 
 ## Compatibility Notes

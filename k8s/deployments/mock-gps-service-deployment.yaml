@@ -15,7 +15,8 @@ spec:
     spec:
       containers:
         - name: mock-gps-service
-          image: DOCKERHUB_USERNAME/rks-mock-gps-service:latest
+          image: rks-mock-gps-service:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3206
           envFrom:

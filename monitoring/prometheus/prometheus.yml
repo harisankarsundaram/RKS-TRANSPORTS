@@ -7,15 +7,6 @@ scrape_configs:
     static_configs:
       - targets: ["prometheus:9090"]
 
-  - job_name: core-microservices
-    metrics_path: /metrics
-    static_configs:
-      - targets:
-          - api-gateway:3200
-          - trip-service:3203
-          - tracking-service:3205
-          - ml-service:8000
-
   - job_name: blackbox-http-health
     metrics_path: /probe
     params:
@@ -33,6 +24,24 @@ scrape_configs:
           - http://alert-service:3208/health
           - http://optimization-service:3209/health
           - http://ml-service:8000/health
+          - http://frontend:80/
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  - job_name: blackbox-platform-health
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - http://prometheus:9090/-/healthy
+          - http://grafana:3000/api/health
+          - http://blackbox-exporter:9115/-/healthy
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target

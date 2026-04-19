@@ -4,7 +4,7 @@ metadata:
   name: auth-service
   namespace: rks-logistics
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: auth-service
@@ -15,7 +15,8 @@ spec:
     spec:
       containers:
         - name: auth-service
-          image: DOCKERHUB_USERNAME/rks-auth-service:latest
+          image: rks-auth-service:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3201
           envFrom:

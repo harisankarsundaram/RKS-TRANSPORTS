@@ -4,7 +4,7 @@ metadata:
   name: analytics-service
   namespace: rks-logistics
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: analytics-service
@@ -15,7 +15,8 @@ spec:
     spec:
       containers:
         - name: analytics-service
-          image: DOCKERHUB_USERNAME/rks-analytics-service:latest
+          image: rks-analytics-service:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3207
           envFrom:

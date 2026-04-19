@@ -1,4 +1,25 @@
 services:
+  postgres:
+    image: postgres:16
+    container_name: rks-postgres
+    restart: unless-stopped
+    command: ["postgres", "-p", "7519"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "7519:7519"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 7519 -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - rks-network
+
   auth-service:
     build:
       context: ../services/auth-service
@@ -9,6 +30,9 @@ services:
       PORT: 3201
       DATABASE_URL: ${DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "3201:3201"
     networks:
@@ -23,6 +47,9 @@ services:
     environment:
       PORT: 3202
       DATABASE_URL: ${DATABASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "3202:3202"
     networks:
@@ -37,6 +64,9 @@ services:
     environment:
       PORT: 3203
       DATABASE_URL: ${DATABASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "3203:3203"
     networks:
@@ -53,6 +83,8 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       TRIP_SERVICE_URL: http://trip-service:3203
     depends_on:
+      postgres:
+        condition: service_healthy
       trip-service:
         condition: service_started
     ports:
@@ -69,6 +101,9 @@ services:
     environment:
       PORT: 3205
       DATABASE_URL: ${DATABASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "3205:3205"
     networks:
@@ -86,7 +121,9 @@ services:
       MOCK_GPS_TICK_MS: ${MOCK_GPS_TICK_MS}
       GPS_ROUTE_PROVIDER: ${GPS_ROUTE_PROVIDER}
       GPS_ROUTE_ENGINE: ${GPS_ROUTE_ENGINE}
-      OPENROUTESERVICE_API_KEY: ${OPENROUTESERVICE_API_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "3206:3206"
     networks:
@@ -104,6 +141,8 @@ services:
       ML_SERVICE_URL: http://ml-service:8000
       ANALYTICS_INTERVAL_MS: ${ANALYTICS_INTERVAL_MS}
     depends_on:
+      postgres:
+        condition: service_healthy
       ml-service:
         condition: service_started
     ports:
@@ -122,6 +161,8 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       ML_SERVICE_URL: http://ml-service:8000
     depends_on:
+      postgres:
+        condition: service_healthy
       ml-service:
         condition: service_started
     ports:
@@ -139,6 +180,9 @@ services:
       PORT: 3209
       DATABASE_URL: ${DATABASE_URL}
       OPTIMIZATION_INTERVAL_MS: ${OPTIMIZATION_INTERVAL_MS}
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "3209:3209"
     networks:
@@ -217,3 +261,6 @@ services:
 networks:
   rks-network:
     name: rks-network
+
+volumes:
+  postgres_data:

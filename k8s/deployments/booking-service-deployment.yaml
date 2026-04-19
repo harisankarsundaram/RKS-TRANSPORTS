@@ -4,7 +4,7 @@ metadata:
   name: booking-service
   namespace: rks-logistics
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: booking-service
@@ -15,7 +15,8 @@ spec:
     spec:
       containers:
         - name: booking-service
-          image: DOCKERHUB_USERNAME/rks-booking-service:latest
+          image: rks-booking-service:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3204
           envFrom:

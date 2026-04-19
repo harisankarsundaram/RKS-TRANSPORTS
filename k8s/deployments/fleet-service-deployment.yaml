@@ -4,7 +4,7 @@ metadata:
   name: fleet-service
   namespace: rks-logistics
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: fleet-service
@@ -15,7 +15,8 @@ spec:
     spec:
       containers:
         - name: fleet-service
-          image: DOCKERHUB_USERNAME/rks-fleet-service:latest
+          image: rks-fleet-service:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3202
           envFrom:

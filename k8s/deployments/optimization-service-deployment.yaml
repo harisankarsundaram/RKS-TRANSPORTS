@@ -15,7 +15,8 @@ spec:
     spec:
       containers:
         - name: optimization-service
-          image: DOCKERHUB_USERNAME/rks-optimization-service:latest
+          image: rks-optimization-service:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3209
           envFrom:
