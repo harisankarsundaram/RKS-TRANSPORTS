@@ -86,10 +86,21 @@ pipeline {
                                         python3 -m pip install --break-system-packages -r services/ml-service/requirements.txt
 
                                         echo "Validating Docker Compose..."
-                                        if [ -f docker/.env ]; then
-                                            docker compose -f docker/docker-compose.yml --env-file docker/.env config > /dev/null
+                                        compose_cmd=""
+                                        if docker compose version >/dev/null 2>&1; then
+                                            compose_cmd="docker compose"
+                                        elif command -v docker-compose >/dev/null 2>&1; then
+                                            compose_cmd="docker-compose"
+                                        fi
+
+                                        if [ -n "$compose_cmd" ]; then
+                                            if [ -f docker/.env ]; then
+                                                $compose_cmd -f docker/docker-compose.yml --env-file docker/.env config > /dev/null
+                                            else
+                                                $compose_cmd -f docker/docker-compose.yml --env-file docker/.env.example config > /dev/null
+                                            fi
                                         else
-                                            docker compose -f docker/docker-compose.yml --env-file docker/.env.example config > /dev/null
+                                            echo "Docker Compose CLI not available on Jenkins agent. Skipping compose validation."
                                         fi
                 '''
             }
