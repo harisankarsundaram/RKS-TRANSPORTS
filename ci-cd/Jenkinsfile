@@ -209,7 +209,12 @@ pipeline {
                 sh '''
                     set -e
                     echo "Applying Kubernetes secret manifest..."
-                    kubectl apply -f k8s/secret.yaml
+                    secret_manifest="k8s/secret.yaml"
+                    if [ ! -f "$secret_manifest" ]; then
+                      echo "k8s/secret.yaml not found. Falling back to k8s/secret.example.yaml"
+                      secret_manifest="k8s/secret.example.yaml"
+                    fi
+                    kubectl apply -f "$secret_manifest"
                 '''
             }
         }
