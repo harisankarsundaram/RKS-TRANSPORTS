@@ -219,6 +219,24 @@ pipeline {
                                             fi
 
                                             kubectl config set-cluster "$cluster_name" --server="https://$minikube_ip:8443" --insecure-skip-tls-verify=true >/dev/null
+
+                                            # Some environments isolate Jenkins on a different Docker network.
+                                            # If Minikube IP still isn't reachable, connect Jenkins to rks-network and use DNS name.
+                                            if ! kubectl --request-timeout=5s get --raw='/readyz' >/dev/null 2>&1; then
+                                                echo "Minikube IP endpoint still unreachable; trying Docker network bridge via rks-network..."
+                                                if docker network inspect rks-network >/dev/null 2>&1; then
+                                                    docker network connect rks-network "$HOSTNAME" >/dev/null 2>&1 || true
+                                                    kubectl config set-cluster "$cluster_name" --server="https://rks:8443" --insecure-skip-tls-verify=true >/dev/null
+                                                else
+                                                    echo "Docker network 'rks-network' not found."
+                                                fi
+                                            fi
+
+                                            if ! kubectl --request-timeout=10s get --raw='/readyz' >/dev/null 2>&1; then
+                                                echo "Kubernetes API is still unreachable after endpoint fallbacks."
+                                                kubectl config view --minify
+                                                exit 1
+                                            fi
                                         fi
 
                     kubectl config get-contexts >/dev/null
