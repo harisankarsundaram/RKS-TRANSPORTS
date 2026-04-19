@@ -83,7 +83,6 @@ pipeline {
                     done
 
                                         echo "Installing Python dependencies..."
-                                        python3 -m pip install --break-system-packages --upgrade pip
                                         python3 -m pip install --break-system-packages -r services/ml-service/requirements.txt
 
                                         echo "Validating Docker Compose..."
