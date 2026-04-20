@@ -10,13 +10,13 @@ if (-not (Test-Path $stateFile)) {
 $state = Get-Content $stateFile -Raw | ConvertFrom-Json
 $pids = @($state.frontendPid, $state.gatewayPid, $state.grafanaPid, $state.prometheusPid) | Where-Object { $_ }
 
-foreach ($pid in $pids) {
+foreach ($procId in $pids) {
     try {
-        Stop-Process -Id $pid -Force -ErrorAction Stop
-        Write-Output "Stopped process $pid"
+        Stop-Process -Id $procId -Force -ErrorAction Stop
+        Write-Output "Stopped process $procId"
     }
     catch {
-        Write-Output "Process $pid was already stopped or not found."
+        Write-Output "Process $procId was already stopped or not found."
     }
 }
 
