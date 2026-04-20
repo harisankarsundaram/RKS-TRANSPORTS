@@ -1,7 +1,9 @@
 param(
     [string]$Namespace = "rks-logistics",
     [int]$FrontendLocalPort = 8080,
-    [int]$GatewayLocalPort = 3200
+    [int]$GatewayLocalPort = 3200,
+    [int]$GrafanaLocalPort = 3001,
+    [int]$PrometheusLocalPort = 9090
 )
 
 $ErrorActionPreference = "Stop"
@@ -57,13 +59,19 @@ if (-not (Test-CommandExists -Name "kubectl")) {
 kubectl get namespace $Namespace | Out-Null
 kubectl -n $Namespace get svc frontend | Out-Null
 kubectl -n $Namespace get svc api-gateway | Out-Null
+kubectl -n $Namespace get svc grafana | Out-Null
+kubectl -n $Namespace get svc prometheus | Out-Null
 
 # If previous runs left kubectl forwards, clean them up and re-check.
 Try-StopKubectlOnPort -Port $FrontendLocalPort
 Try-StopKubectlOnPort -Port $GatewayLocalPort
+Try-StopKubectlOnPort -Port $GrafanaLocalPort
+Try-StopKubectlOnPort -Port $PrometheusLocalPort
 
 $reuseFrontend = $false
 $reuseGateway = $false
+$reuseGrafana = $false
+$reusePrometheus = $false
 
 if (Test-PortBusy -Port $FrontendLocalPort) {
     $reuseFrontend = $true
@@ -75,6 +83,16 @@ if (Test-PortBusy -Port $GatewayLocalPort) {
     Write-Output "Port $GatewayLocalPort is already active. Reusing existing api-gateway tunnel."
 }
 
+if (Test-PortBusy -Port $GrafanaLocalPort) {
+    $reuseGrafana = $true
+    Write-Output "Port $GrafanaLocalPort is already active. Reusing existing grafana tunnel."
+}
+
+if (Test-PortBusy -Port $PrometheusLocalPort) {
+    $reusePrometheus = $true
+    Write-Output "Port $PrometheusLocalPort is already active. Reusing existing prometheus tunnel."
+}
+
 if (-not $reuseFrontend) {
     Ensure-PortAvailable -Port $FrontendLocalPort -Purpose "frontend port-forward"
 }
@@ -83,11 +101,23 @@ if (-not $reuseGateway) {
     Ensure-PortAvailable -Port $GatewayLocalPort -Purpose "api-gateway port-forward"
 }
 
+if (-not $reuseGrafana) {
+    Ensure-PortAvailable -Port $GrafanaLocalPort -Purpose "grafana port-forward"
+}
+
+if (-not $reusePrometheus) {
+    Ensure-PortAvailable -Port $PrometheusLocalPort -Purpose "prometheus port-forward"
+}
+
 $frontendArgs = "-n $Namespace port-forward svc/frontend ${FrontendLocalPort}:80"
 $gatewayArgs = "-n $Namespace port-forward svc/api-gateway ${GatewayLocalPort}:80"
+$grafanaArgs = "-n $Namespace port-forward svc/grafana ${GrafanaLocalPort}:3000"
+$prometheusArgs = "-n $Namespace port-forward svc/prometheus ${PrometheusLocalPort}:9090"
 
 $frontendProc = $null
 $gatewayProc = $null
+$grafanaProc = $null
+$prometheusProc = $null
 
 if (-not $reuseFrontend) {
     $frontendProc = Start-Process -FilePath "kubectl" -ArgumentList $frontendArgs -PassThru -WindowStyle Hidden
@@ -97,14 +127,26 @@ if (-not $reuseGateway) {
     $gatewayProc = Start-Process -FilePath "kubectl" -ArgumentList $gatewayArgs -PassThru -WindowStyle Hidden
 }
 
+if (-not $reuseGrafana) {
+    $grafanaProc = Start-Process -FilePath "kubectl" -ArgumentList $grafanaArgs -PassThru -WindowStyle Hidden
+}
+
+if (-not $reusePrometheus) {
+    $prometheusProc = Start-Process -FilePath "kubectl" -ArgumentList $prometheusArgs -PassThru -WindowStyle Hidden
+}
+
 Start-Sleep -Seconds 2
 
 $state = [ordered]@{
     namespace = $Namespace
     frontendPort = $FrontendLocalPort
     gatewayPort = $GatewayLocalPort
+    grafanaPort = $GrafanaLocalPort
+    prometheusPort = $PrometheusLocalPort
     frontendPid = if ($null -ne $frontendProc) { $frontendProc.Id } else { $null }
     gatewayPid = if ($null -ne $gatewayProc) { $gatewayProc.Id } else { $null }
+    grafanaPid = if ($null -ne $grafanaProc) { $grafanaProc.Id } else { $null }
+    prometheusPid = if ($null -ne $prometheusProc) { $prometheusProc.Id } else { $null }
     startedAt = (Get-Date).ToString("o")
 }
 
@@ -113,6 +155,8 @@ $state | ConvertTo-Json | Set-Content -Path $stateFile
 Write-Output "Port-forwards started."
 Write-Output "Frontend URL: http://127.0.0.1:$FrontendLocalPort"
 Write-Output "API URL:      http://127.0.0.1:$GatewayLocalPort"
+Write-Output "Grafana URL:  http://127.0.0.1:$GrafanaLocalPort"
+Write-Output "Prom URL:     http://127.0.0.1:$PrometheusLocalPort"
 Write-Output "API Health:   http://127.0.0.1:$GatewayLocalPort/health"
 Write-Output "State file:   $stateFile"
 Write-Output "Use scripts/stop-local-access.ps1 to stop both forwards."

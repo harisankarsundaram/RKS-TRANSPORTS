@@ -8,7 +8,7 @@ if (-not (Test-Path $stateFile)) {
 }
 
 $state = Get-Content $stateFile -Raw | ConvertFrom-Json
-$pids = @($state.frontendPid, $state.gatewayPid) | Where-Object { $_ }
+$pids = @($state.frontendPid, $state.gatewayPid, $state.grafanaPid, $state.prometheusPid) | Where-Object { $_ }
 
 foreach ($pid in $pids) {
     try {
