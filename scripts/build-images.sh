@@ -21,8 +21,12 @@ SERVICES=(
   frontend
 )
 
+canonical_registry="${REGISTRY%/}"
+dockerhub_registry="${canonical_registry#docker.io/}"
+
 for service in "${SERVICES[@]}"; do
-  image="${REGISTRY}/rks-${service}:${TAG}"
+  canonical_image="${canonical_registry}/rks-${service}:${TAG}"
+  dockerhub_image="${dockerhub_registry}/rks-${service}:${TAG}"
   
   if [ "$service" = "frontend" ]; then
     context="${ROOT_DIR}/${service}"
@@ -30,8 +34,14 @@ for service in "${SERVICES[@]}"; do
     context="${ROOT_DIR}/services/${service}"
   fi
 
-  echo "Building ${image} from ${context}"
-  docker build -t "${image}" "${context}"
+  echo "Building ${canonical_image} from ${context}"
+  docker build -t "${canonical_image}" "${context}"
+
+  # Docker may resolve docker.io-qualified names as unqualified namespace names.
+  # Keep both tags so downstream push commands always find a local tag.
+  if [ "${dockerhub_image}" != "${canonical_image}" ]; then
+    docker tag "${canonical_image}" "${dockerhub_image}"
+  fi
 done
 
 echo "All images built successfully"

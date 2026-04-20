@@ -475,7 +475,8 @@ spec:
           configMap:
             name: rks-prometheus-config
         - name: prometheus-data
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: prometheus-pvc
 ---
 apiVersion: v1
 kind: Service
@@ -492,6 +493,18 @@ spec:
       protocol: TCP
       nodePort: 30990
   type: NodePort
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-pvc
+  namespace: rks-logistics
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -582,6 +595,8 @@ spec:
             - name: grafana-dashboard-provider
               mountPath: /etc/grafana/provisioning/dashboards/dashboards.yml
               subPath: dashboards.yml
+            - name: grafana-data
+              mountPath: /var/lib/grafana
             - name: grafana-dashboards
               mountPath: /var/lib/grafana/dashboards
           resources:
@@ -598,9 +613,24 @@ spec:
         - name: grafana-dashboard-provider
           configMap:
             name: rks-grafana-dashboard-provider
+        - name: grafana-data
+          persistentVolumeClaim:
+            claimName: grafana-pvc
         - name: grafana-dashboards
           configMap:
             name: rks-grafana-dashboards
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-pvc
+  namespace: rks-logistics
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
 ---
 apiVersion: v1
 kind: Service

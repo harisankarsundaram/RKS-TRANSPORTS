@@ -19,13 +19,43 @@ const ALERT_SERVICE_URL = process.env.ALERT_SERVICE_URL || 'http://localhost:320
 const OPTIMIZATION_SERVICE_URL = process.env.OPTIMIZATION_SERVICE_URL || 'http://localhost:3209';
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
 
+let forceHealthFailure = false;
+
 app.use(cors());
 app.use(morgan('dev'));
 
 app.get('/health', (req, res) => {
+    if (forceHealthFailure) {
+        return res.status(503).json({
+            status: 'ERROR',
+            service: 'api-gateway',
+            trigger: 'forced-health-failure',
+            timestamp: new Date().toISOString()
+        });
+    }
+
     res.json({
         status: 'OK',
         service: 'api-gateway',
+        timestamp: new Date().toISOString()
+    });
+});
+
+app.post('/ops/health/fail', (req, res) => {
+    const enabled = String(req.query.enabled || 'true').trim().toLowerCase();
+    forceHealthFailure = ['1', 'true', 'yes', 'on'].includes(enabled);
+
+    return res.json({
+        success: true,
+        force_health_failure: forceHealthFailure,
+        timestamp: new Date().toISOString()
+    });
+});
+
+app.get('/ops/health/fail', (req, res) => {
+    res.json({
+        success: true,
+        force_health_failure: forceHealthFailure,
         timestamp: new Date().toISOString()
     });
 });
