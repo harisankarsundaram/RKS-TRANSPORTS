@@ -1,9 +1,9 @@
 param(
     [string]$Namespace = "rks-logistics",
-    [int]$FrontendLocalPort = 8080,
-    [int]$GatewayLocalPort = 3200,
-    [int]$GrafanaLocalPort = 3001,
-    [int]$PrometheusLocalPort = 9090
+    [int]$FrontendLocalPort = 18080,
+    [int]$GatewayLocalPort = 13200,
+    [int]$GrafanaLocalPort = 13001,
+    [int]$PrometheusLocalPort = 19090
 )
 
 $ErrorActionPreference = "Stop"
@@ -28,6 +28,21 @@ function Get-PortOwnerPid {
         return $null
     }
     return $listener.OwningProcess
+}
+
+function Get-PortOwnerProcessName {
+    param([int]$Port)
+    $ownerPid = Get-PortOwnerPid -Port $Port
+    if ($null -eq $ownerPid) {
+        return $null
+    }
+
+    $owner = Get-Process -Id $ownerPid -ErrorAction SilentlyContinue
+    if ($null -eq $owner) {
+        return $null
+    }
+
+    return $owner.ProcessName
 }
 
 function Try-StopKubectlOnPort {
@@ -74,23 +89,43 @@ $reuseGrafana = $false
 $reusePrometheus = $false
 
 if (Test-PortBusy -Port $FrontendLocalPort) {
-    $reuseFrontend = $true
-    Write-Output "Port $FrontendLocalPort is already active. Reusing existing frontend tunnel."
+    $ownerName = Get-PortOwnerProcessName -Port $FrontendLocalPort
+    if ($ownerName -eq "kubectl") {
+        $reuseFrontend = $true
+        Write-Output "Port $FrontendLocalPort is already active via kubectl. Reusing existing frontend tunnel."
+    } else {
+        throw "Port $FrontendLocalPort is already in use by process '$ownerName'. Choose another FrontendLocalPort."
+    }
 }
 
 if (Test-PortBusy -Port $GatewayLocalPort) {
-    $reuseGateway = $true
-    Write-Output "Port $GatewayLocalPort is already active. Reusing existing api-gateway tunnel."
+    $ownerName = Get-PortOwnerProcessName -Port $GatewayLocalPort
+    if ($ownerName -eq "kubectl") {
+        $reuseGateway = $true
+        Write-Output "Port $GatewayLocalPort is already active via kubectl. Reusing existing api-gateway tunnel."
+    } else {
+        throw "Port $GatewayLocalPort is already in use by process '$ownerName'. Choose another GatewayLocalPort."
+    }
 }
 
 if (Test-PortBusy -Port $GrafanaLocalPort) {
-    $reuseGrafana = $true
-    Write-Output "Port $GrafanaLocalPort is already active. Reusing existing grafana tunnel."
+    $ownerName = Get-PortOwnerProcessName -Port $GrafanaLocalPort
+    if ($ownerName -eq "kubectl") {
+        $reuseGrafana = $true
+        Write-Output "Port $GrafanaLocalPort is already active via kubectl. Reusing existing grafana tunnel."
+    } else {
+        throw "Port $GrafanaLocalPort is already in use by process '$ownerName'. Choose another GrafanaLocalPort."
+    }
 }
 
 if (Test-PortBusy -Port $PrometheusLocalPort) {
-    $reusePrometheus = $true
-    Write-Output "Port $PrometheusLocalPort is already active. Reusing existing prometheus tunnel."
+    $ownerName = Get-PortOwnerProcessName -Port $PrometheusLocalPort
+    if ($ownerName -eq "kubectl") {
+        $reusePrometheus = $true
+        Write-Output "Port $PrometheusLocalPort is already active via kubectl. Reusing existing prometheus tunnel."
+    } else {
+        throw "Port $PrometheusLocalPort is already in use by process '$ownerName'. Choose another PrometheusLocalPort."
+    }
 }
 
 if (-not $reuseFrontend) {
