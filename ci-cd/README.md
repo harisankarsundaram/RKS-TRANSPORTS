@@ -8,6 +8,7 @@ The pipeline file is located at `ci-cd/Jenkinsfile`.
 - GitHub webhook should target Jenkins endpoint:
   - `http://<jenkins-host>/github-webhook/`
 - Optional `.github/workflows/devops.yml` job can trigger Jenkins via `JENKINS_WEBHOOK_URL` secret
+- Pipeline trigger check: webhook-based runs on `devops` branch are verified.
 
 ## Stages
 
