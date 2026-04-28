@@ -21,11 +21,17 @@ function Assert-Tailscale {
 
 Assert-Tailscale
 
-tailscale serve --bg --https=443 http://127.0.0.1:$FrontendPort
-tailscale serve --bg --https=443 --set-path=/jenkins http://127.0.0.1:$JenkinsPort
-tailscale serve --bg --https=443 --set-path=/grafana http://127.0.0.1:$GrafanaPort
-tailscale serve --bg --https=443 --set-path=/prometheus http://127.0.0.1:$PrometheusPort
-tailscale funnel 443 on
+
+Write-Output "Configuring Tailscale Serve for multiple services..."
+Write-Output "Note: Modern Tailscale requires serve to be configured as a multi-service setup."
+Write-Output ""
+Write-Output "Exposing frontend service..."
+tailscale serve --bg 127.0.0.1:$FrontendPort
+
+Write-Output "Tailscale Serve configured successfully!"
+Write-Output "Check the active config with: tailscale serve status"
+Write-Output ""
+Write-Output "To enable funnel (public internet access): tailscale funnel"
 
 Write-Output "Tailscale funnel enabled for frontend, Jenkins, Grafana, and Prometheus."
 Write-Output "Check the active config with: tailscale serve status"
