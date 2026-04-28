@@ -1,8 +1,3 @@
-provider "kubernetes" {
-  config_path    = pathexpand(var.kubeconfig_path)
-  config_context = var.kube_context
-}
-
 locals {
   kustomization = yamldecode(file("${path.module}/../k8s/kustomization.yaml"))
 
@@ -43,18 +38,21 @@ locals {
     ) => entry
     if lower(try(entry.manifest.kind, "")) != "namespace"
   }
+  k8s_dir = abspath("${path.module}/../k8s")
+  namespace_docs_count = length(local.namespace_docs)
+  other_docs_count     = length(local.other_docs)
 }
 
-resource "kubernetes_manifest" "namespaces" {
-  for_each = local.namespace_docs
+resource "terraform_data" "apply_kubernetes_manifests" {
+  input = {
+    kube_context = var.kube_context
+    k8s_dir      = local.k8s_dir
+    doc_count    = length(local.docs)
+    namespace    = var.namespace
+  }
 
-  manifest = each.value.manifest
-}
-
-resource "kubernetes_manifest" "resources" {
-  for_each = local.other_docs
-
-  manifest = each.value.manifest
-
-  depends_on = [kubernetes_manifest.namespaces]
+  provisioner "local-exec" {
+    interpreter = ["PowerShell", "-NoProfile", "-Command"]
+    command     = "kubectl --context ${var.kube_context} apply -k '${local.k8s_dir}'"
+  }
 }

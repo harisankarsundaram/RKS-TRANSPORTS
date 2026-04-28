@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: tracking-service
-          image: rks-tracking-service:latest
+          image: docker.io/harisankarsundaram/rks-tracking-service:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3205

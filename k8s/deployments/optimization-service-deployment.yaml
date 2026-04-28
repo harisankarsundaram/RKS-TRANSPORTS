@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: optimization-service
-          image: rks-optimization-service:latest
+          image: docker.io/harisankarsundaram/rks-optimization-service:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3209

@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: booking-service
-          image: rks-booking-service:latest
+          image: docker.io/harisankarsundaram/rks-booking-service:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3204

@@ -19,3 +19,7 @@ legacy-monolith/backend/readiness-report.json
 # DevOps local runtime files
 docker/.env
 k8s/secret.yaml
+.tools/
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+scripts/.port-forward-state.json

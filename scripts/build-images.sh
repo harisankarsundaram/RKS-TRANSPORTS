@@ -27,6 +27,8 @@ dockerhub_registry="${canonical_registry#docker.io/}"
 for service in "${SERVICES[@]}"; do
   canonical_image="${canonical_registry}/rks-${service}:${TAG}"
   dockerhub_image="${dockerhub_registry}/rks-${service}:${TAG}"
+  canonical_latest="${canonical_registry}/rks-${service}:latest"
+  dockerhub_latest="${dockerhub_registry}/rks-${service}:latest"
   
   if [ "$service" = "frontend" ]; then
     context="${ROOT_DIR}/${service}"
@@ -41,6 +43,13 @@ for service in "${SERVICES[@]}"; do
   # Keep both tags so downstream push commands always find a local tag.
   if [ "${dockerhub_image}" != "${canonical_image}" ]; then
     docker tag "${canonical_image}" "${dockerhub_image}"
+  fi
+
+  if [ "${TAG}" != "latest" ]; then
+    docker tag "${canonical_image}" "${canonical_latest}"
+    if [ "${dockerhub_latest}" != "${canonical_latest}" ]; then
+      docker tag "${canonical_image}" "${dockerhub_latest}"
+    fi
   fi
 done
 

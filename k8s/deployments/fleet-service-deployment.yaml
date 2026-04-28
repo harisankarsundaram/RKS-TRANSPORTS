@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: fleet-service
-          image: rks-fleet-service:latest
+          image: docker.io/harisankarsundaram/rks-fleet-service:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3202

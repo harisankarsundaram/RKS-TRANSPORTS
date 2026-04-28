@@ -1,11 +1,11 @@
 output "applied_resource_count" {
   description = "Number of non-namespace manifests applied"
-  value       = length(kubernetes_manifest.resources)
+  value       = length(local.other_docs)
 }
 
 output "namespace_count" {
   description = "Number of namespace manifests applied"
-  value       = length(kubernetes_manifest.namespaces)
+  value       = length(local.namespace_docs)
 }
 
 output "frontend_hint" {

@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: analytics-service
-          image: rks-analytics-service:latest
+          image: docker.io/harisankarsundaram/rks-analytics-service:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3207

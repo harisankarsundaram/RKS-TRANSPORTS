@@ -41,6 +41,8 @@ fi
 for service in "${SERVICES[@]}"; do
   canonical_image="${canonical_registry}/rks-${service}:${TAG}"
   dockerhub_image="${dockerhub_registry}/rks-${service}:${TAG}"
+  canonical_latest="${canonical_registry}/rks-${service}:latest"
+  dockerhub_latest="${dockerhub_registry}/rks-${service}:latest"
 
   if ! docker image inspect "${canonical_image}" >/dev/null 2>&1; then
     if docker image inspect "${dockerhub_image}" >/dev/null 2>&1; then
@@ -54,6 +56,19 @@ for service in "${SERVICES[@]}"; do
 
   echo "Loading ${canonical_image} into ${MINIKUBE_CONTAINER}"
   docker save "${canonical_image}" | docker exec -i "${MINIKUBE_CONTAINER}" docker load >/dev/null
+
+  if [ "${TAG}" != "latest" ]; then
+    if ! docker image inspect "${canonical_latest}" >/dev/null 2>&1; then
+      docker tag "${canonical_image}" "${canonical_latest}"
+    fi
+
+    if [ "${dockerhub_latest}" != "${canonical_latest}" ]; then
+      docker tag "${canonical_image}" "${dockerhub_latest}"
+    fi
+
+    echo "Loading ${canonical_latest} into ${MINIKUBE_CONTAINER}"
+    docker save "${canonical_latest}" | docker exec -i "${MINIKUBE_CONTAINER}" docker load >/dev/null
+  fi
 
 done
 

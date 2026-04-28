@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: api-gateway
-          image: rks-api-gateway:latest
+          image: docker.io/harisankarsundaram/rks-api-gateway:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3200

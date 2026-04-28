@@ -25,6 +25,8 @@ dockerhub_registry="${canonical_registry#docker.io/}"
 for service in "${SERVICES[@]}"; do
   canonical_image="${canonical_registry}/rks-${service}:${TAG}"
   dockerhub_image="${dockerhub_registry}/rks-${service}:${TAG}"
+  canonical_latest="${canonical_registry}/rks-${service}:latest"
+  dockerhub_latest="${dockerhub_registry}/rks-${service}:latest"
 
   if ! docker image inspect "${canonical_image}" >/dev/null 2>&1; then
     if docker image inspect "${dockerhub_image}" >/dev/null 2>&1; then
@@ -41,6 +43,19 @@ for service in "${SERVICES[@]}"; do
 
   echo "Pushing ${canonical_image}"
   docker push "${canonical_image}"
+
+  if [ "${TAG}" != "latest" ]; then
+    if ! docker image inspect "${canonical_latest}" >/dev/null 2>&1; then
+      docker tag "${canonical_image}" "${canonical_latest}"
+    fi
+
+    if [ "${dockerhub_latest}" != "${canonical_latest}" ]; then
+      docker tag "${canonical_image}" "${dockerhub_latest}"
+    fi
+
+    echo "Pushing ${canonical_latest}"
+    docker push "${canonical_latest}"
+  fi
 done
 
 echo "All images pushed successfully"

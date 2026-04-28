@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: auth-service
-          image: rks-auth-service:latest
+          image: docker.io/harisankarsundaram/rks-auth-service:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3201

@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: alert-service
-          image: rks-alert-service:latest
+          image: docker.io/harisankarsundaram/rks-alert-service:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3208

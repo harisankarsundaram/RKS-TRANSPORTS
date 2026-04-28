@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: rks-frontend:latest
+          image: docker.io/harisankarsundaram/rks-frontend:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80
