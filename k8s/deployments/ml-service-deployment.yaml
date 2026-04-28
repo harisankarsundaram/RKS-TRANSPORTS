@@ -16,7 +16,7 @@ spec:
       containers:
         - name: ml-service
           image: docker.io/harisankarsundaram/rks-ml-service:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Never
           ports:
             - containerPort: 8000
           env:
