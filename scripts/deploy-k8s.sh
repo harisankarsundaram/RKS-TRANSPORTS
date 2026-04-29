@@ -62,7 +62,7 @@ for deployment in \
   prometheus \
   blackbox-exporter \
   grafana; do
-  kubectl -n "${NAMESPACE}" rollout status "deployment/${deployment}" --timeout=180s
+  kubectl -n "${NAMESPACE}" rollout status "deployment/${deployment}" --timeout=600s
 done
 
 echo "Kubernetes deployment complete"

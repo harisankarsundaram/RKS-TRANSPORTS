@@ -379,7 +379,7 @@ pipeline {
                                                 prometheus \
                                                 blackbox-exporter \
                                                 grafana; do
-                                                docker exec rks "$rks_kubectl" --kubeconfig /var/lib/minikube/kubeconfig -n "$K8S_NAMESPACE" rollout status "deployment/${deployment}" --timeout=180s
+                                                docker exec rks "$rks_kubectl" --kubeconfig /var/lib/minikube/kubeconfig -n "$K8S_NAMESPACE" rollout status "deployment/${deployment}" --timeout=600s
                                             done
                                         else
                                             bash scripts/deploy-k8s.sh "$IMAGE_REGISTRY" "$IMAGE_TAG" "$K8S_NAMESPACE"
