@@ -195,6 +195,12 @@ pipeline {
                                 set -e
                                 bash scripts/load-images-into-minikube.sh "$IMAGE_REGISTRY" "$IMAGE_TAG" rks
                             '''
+                        } else if (pushStatus == 0) {
+                            sh '''
+                                set -e
+                                echo "Loading pushed images into Minikube for imagePullPolicy: Never deployments..."
+                                bash scripts/load-images-into-minikube.sh "$IMAGE_REGISTRY" "$IMAGE_TAG" rks
+                            '''
                         } else if (pushStatus != 0) {
                             error("Docker push failed with status ${pushStatus}")
                         }
