@@ -53,7 +53,7 @@ function Home() {
         <div className="container hero-center">
           <ScrollReveal animation="fade-in">
             <div className="hero-only-content">
-              <h1 className="hero-title hero-title-only">RKS TRANSPORTS</h1>
+              <h1 className="hero-title hero-title-only">RKS TRANSPORT</h1>
               <div className="hero-actions hero-actions-centered">
                 <Button to="/bookings" size="lg" variant="primary">
                   Book Transport
